@@ -1,0 +1,6 @@
+[ {
+    "type" : "launch",
+    "orbit1" : [100,"km"],
+    "hperi" : "Mun + (100,'km')"
+}
+]
