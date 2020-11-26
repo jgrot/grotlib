@@ -20,22 +20,22 @@ if __name__ == "__main__" :
     test = ksp.g("Kerbin", (100E3,"m"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
-    print("Testing dv_orbit at at Kerbin at 100 km")
+    print("Testing dvOrbit at at Kerbin at 100 km")
     truth = 2646.501134322117
-    test = ksp.dv_orbit("Kerbin", (100,"km"))
+    test = ksp.dvOrbit("Kerbin", (100,"km"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
-    print("Testing orbit_v at Kerbin at 100 km")
+    print("Testing orbitV at Kerbin at 100 km")
     truth = 2245.6306781964713
-    test = ksp.orbit_v("Kerbin", (100,"km"))
+    test = ksp.orbitV("Kerbin", (100,"km"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
-    print("Testing dv_hohmann_peri at Kerbin r_peri=100km, r_apo=30Mm")
+    print("Testing dvHohmannPeri at Kerbin r_peri=100km, r_apo=30Mm")
     truth = 894.457725062739
-    test = ksp.dv_hohmann_peri("Kerbin", (100,"km"), (30,"Mm"))
+    test = ksp.dvHohmannPeri("Kerbin", (100,"km"), (30,"Mm"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
-    print("Testing dv_hohmann_apo at Kerbin r_peri=100km, r_apo=30Mm")
+    print("Testing dvHohmannApo at Kerbin r_peri=100km, r_apo=30Mm")
     truth = 267.8140180540594
-    test = ksp.dv_hohmann_apo("Kerbin", (100,"km"), (30,"Mm"))
+    test = ksp.dvHohmannApo("Kerbin", (100,"km"), (30,"Mm"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)

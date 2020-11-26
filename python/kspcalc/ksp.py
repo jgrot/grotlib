@@ -130,7 +130,7 @@ def analyzeRocket(rocket_def) :
             print("Alt at end of stage: %s km" % h_at_stage)
 
 
-def dv_hohmann_apo(body, r_peri, r_apo) :
+def dvHohmannApo(body, r_peri, r_apo) :
     '''DV computed when thrusting at apoapsis to change periapsis.
     '''
     
@@ -150,7 +150,7 @@ def dv_hohmann_apo(body, r_peri, r_apo) :
     return A*B
     
 
-def dv_hohmann_peri(body, r_peri, r_apo) :
+def dvHohmannPeri(body, r_peri, r_apo) :
     '''DV computed when thrusting at periapsis to change apoapsis.
     '''
     
@@ -170,7 +170,12 @@ def dv_hohmann_peri(body, r_peri, r_apo) :
     return A*B
     
 
-def dv_orbit(body, alt) :
+def dvInterp(maneuvers) :
+    '''Interpret a set of maneuvers to compute DV map'''
+    pass
+
+
+def dvOrbit(body, alt) :
     
     try :
         alt, altu = alt
@@ -188,10 +193,10 @@ def dv_orbit(body, alt) :
 
     g_ground = g(body, (0,"m"))
 
-    dv_orbit = math.sqrt((GM/r) + 2.0*g_ground*alt)
+    dvOrbit = math.sqrt((GM/r) + 2.0*g_ground*alt)
 
-    return dv_orbit
-    
+    return dvOrbit
+
 
 def g(body, alt) :
     '''Computes acceleration due to gravity near body "body" at altitude "alt"
@@ -227,7 +232,7 @@ def listOfBodyNames(sep=" | ") :
     return sep.join(body_names)
 
 
-def orbit_v(body, alt) :
+def orbitV(body, alt) :
     
     try :
         alt, altu = alt
@@ -269,15 +274,15 @@ if __name__ == "__main__" :
     cmd_craft = subparsers.add_parser("craft", help="Analyzes a set of craft")
     cmd_craft.add_argument("fpath", help="Name of a craft JSON file.  If file can't be found, then generates a template to file to the name")
 
-    # Command "dv_orbit"
-    cmd_dv_orbit = subparsers.add_parser("dv_orbit", help="Computes circular orbital velocity")
-    cmd_dv_orbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
-    cmd_dv_orbit.add_argument("alt", help="\"(alt, 'unit')\"")
+    # Command "dvOrbit"
+    cmd_dvOrbit = subparsers.add_parser("dvOrbit", help="Computes circular orbital velocity")
+    cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
-    # Command "orbit_v"
-    cmd_orbit_v = subparsers.add_parser("orbit_v", help="Computes circular orbital velocity")
-    cmd_orbit_v.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
-    cmd_orbit_v.add_argument("alt", help="\"(alt, 'unit')\"")
+    # Command "orbitV"
+    cmd_orbitV = subparsers.add_parser("orbitV", help="Computes circular orbital velocity")
+    cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
     
     args = parser.parse_args()
 
@@ -297,13 +302,13 @@ if __name__ == "__main__" :
                 analyzeRocket(craft)
 
                 
-    if args.command == "dv_orbit" :
+    if args.command == "dvOrbit" :
         print("Body: %s" % args.body)
         altitude = eval(args.alt)
         alt, unit = altitude
         print("Altitude: %s %s" % (alt, unit))
 
-        print("DV to reach circular orbit: %s" % dv_orbit(args.body, altitude))
+        print("DV to reach circular orbit: %s" % dvOrbit(args.body, altitude))
 
                 
     if args.command == "g" :
@@ -315,11 +320,11 @@ if __name__ == "__main__" :
         print("Accel of gravity: %s" % g(args.body, altitude))
 
             
-    if args.command == "orbit_v" :
+    if args.command == "orbitV" :
         print("Body: %s" % args.body)
         altitude = eval(args.alt)
         alt, unit = altitude
         print("Altitude: %s %s" % (alt, unit))
 
-        print("Circular orbit speed: %s" % orbit_v(args.body, altitude))
+        print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 

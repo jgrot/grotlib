@@ -1,6 +1,12 @@
-[ {
-    "type" : "launch",
-    "orbit1" : [100,"km"],
-    "hperi" : "Mun + (100,'km')"
-}
+[
+    {
+	"type"  : "launch",
+	"body"  : "Kerbin",
+	"orbit" : [100,"km"],
+    },
+    {
+	"type" : "hperi"
+	"peri" :  [100,"km"],
+	"apo"  : "('Kerbin','Mun') + (100,'km')"
+    }
 ]
