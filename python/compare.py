@@ -21,12 +21,12 @@ def fsame(a, b, tolfrac=1E-15, report_to = None) :
     
         if same :
 
-            report_to.write("SAME: %s and %s are within tolerance of %s\n" %
+            report_to.write("++++: %s and %s are within tolerance of %s\n" %
                             (a, b, tol) )
 
         else :
 
-            report_to.write("FAIL: %s and %s are outside tolerance of %s\n" %
+            report_to.write("----: %s and %s are outside tolerance of %s\n" %
                             (a, b, tol) )
 
     return same
