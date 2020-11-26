@@ -7,6 +7,6 @@
     {
 	"type" : "hperi",
 	"peri" : [100,"km"],
-	"apo"  : "D('Kerbin','Mun') + (100,'km')"
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     }
 ]

@@ -21,10 +21,17 @@ bodies_db = {
     "Kerbin" : {
         "GM" : (3.53E12, "m3/s2"),
         "R"  : (600E3, "m"),
+        "bodies" : [("Mun",(11.4,"Mm")), ("Minmus",(46.4,"Mm"))]
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
-        "R"  : (200E3, "m")
+        "R"  : (200E3, "m"),
+        "bodies" : [("Kerbin",(11.4,"Mm"))]
+    },
+    "Minmus" : {
+        "GM" : (1.766E9, "m3/s2"),
+        "R"  : (60, "km"),
+        "bodies" : [("Kerbin",(46.4,"Mm"))]
     }
 }
 
@@ -130,6 +137,7 @@ def analyzeRocket(rocket_def) :
             print("Alt at end of stage: %s km" % h_at_stage)
 
 
+            
 def dInterp(term, dunit) :
     '''Interpret a distance term
     '''
@@ -137,10 +145,38 @@ def dInterp(term, dunit) :
         print("DEBUG: %s is a string" % repr(term))
         terms = term.split()
         print("DEBUG: TERMS IN STRING:", repr(terms))
+        # Currently only allowing an odd number of terms where even terms must be + or -
+        nterms = len(terms)
+        if nterms % 2 != 1 :
+            raise Exception("Bad number of terms")
+        # Convert odd terms (0,2,...) to meters
+        terms2 = []
+        for iterm, term in enumerate(terms) :
+            if iterm % 2 == 1 :
+                terms2.append(term)
+            else :
+                if term[0] == "D" :
+                    # This is a distance calculation
+                    print("DEBUG: DISTANCE")
+                    terms2.append(term)
+                if term[0] == "R" :
+                    print("DEBUG: RADIUS")
+                    terms2.append(term)
     elif isinstance(term, tuple) :
         print("DEBUG: %s is a tuple" % repr(term))
     elif isinstance(term, list) :
         print("DEBUG: %s is a list" % repr(term))
+
+
+def dInterpDist(term, dunit="m") :
+    
+    if term[0] != "D" :
+        raise Exception("Not a distance term")
+
+    b1, b2 = eval(term[1:])
+
+    b1_rec = body_db[b1]
+    b2_rec = body_db[b2]
 
     
 
@@ -150,7 +186,9 @@ def dvHohmannApo(body, r_peri, r_apo) :
     
     body_rec = bodies_db[body]
     (GM, GMu) = body_rec["GM"]
+    
     (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
     
     rperi, rperiu = r_peri
     rperi *= uconv(dist_db, rperiu, "m")
@@ -170,7 +208,9 @@ def dvHohmannPeri(body, r_peri, r_apo) :
     
     body_rec = bodies_db[body]
     (GM, GMu) = body_rec["GM"]
+
     (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
     
     rperi, rperiu = r_peri
     rperi *= uconv(dist_db, rperiu, "m")
@@ -208,11 +248,13 @@ def dvOrbit(body, alt) :
         sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
         exit(1)
 
+    alt *= uconv(dist_db, altu,"m")
+            
     body_rec = bodies_db[body]
     (GM, GMu) = body_rec["GM"]
-    (R, Ru) = body_rec["R"]
 
-    alt *= uconv(dist_db, altu,"m")
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
     
     r = R + alt
 
@@ -238,11 +280,13 @@ def g(body, alt) :
         sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
         exit(1)
 
+    alt *= uconv(dist_db, altu,"m")
+
     body_rec = bodies_db[body]
     (GM, GMu) = body_rec["GM"]
-    (R, Ru) = body_rec["R"]
 
-    alt *= uconv(dist_db, altu,"m")
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
     
     r = R + alt
 
@@ -265,11 +309,14 @@ def orbitV(body, alt) :
         sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
         exit(1)
 
-    body_rec = bodies_db[body]
-    (GM, GMu) = body_rec["GM"]
-    (R, Ru) = body_rec["R"]
-
     alt *= uconv(dist_db, altu, "m")
+    
+    body_rec = bodies_db[body]
+
+    (GM, GMu) = body_rec["GM"]
+
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
     
     r = R + alt
 
