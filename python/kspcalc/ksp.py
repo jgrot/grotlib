@@ -21,17 +21,18 @@ bodies_db = {
     "Kerbin" : {
         "GM" : (3.53E12, "m3/s2"),
         "R"  : (600E3, "m"),
-        "bodies" : [("Mun",(11.4,"Mm")), ("Minmus",(46.4,"Mm"))]
+        "satellites" : {
+            "Mun"    : (11.4,"Mm"),
+            "Minmus" : (46.4,"Mm")
+        }
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
         "R"  : (200E3, "m"),
-        "bodies" : [("Kerbin",(11.4,"Mm"))]
     },
     "Minmus" : {
         "GM" : (1.766E9, "m3/s2"),
         "R"  : (60, "km"),
-        "bodies" : [("Kerbin",(46.4,"Mm"))]
     }
 }
 
@@ -53,7 +54,8 @@ dist_db = {
     # number of meters in unit
     "m" : 1.0,
     "km" : 1E3,
-    "Mm" : 1E6
+    "Mm" : 1E6,
+    "pc" : 3.0857E16 # Parsec
 }
 
 
@@ -138,13 +140,17 @@ def analyzeRocket(rocket_def) :
 
 
             
-def dInterp(term, dunit) :
-    '''Interpret a distance term
+def dInterp(term, dunit="m") :
+    '''General distance interpreter.  Allowed terms are:
+
+    1. Regular value, units list or tuple pair
+    2. String: D('body1', 'body2')
+    3. String: R('body')
+    4. String containing all valid terms above separated by operators
+
     '''
     if isinstance(term, str) :
-        print("DEBUG: %s is a string" % repr(term))
         terms = term.split()
-        print("DEBUG: TERMS IN STRING:", repr(terms))
         # Currently only allowing an odd number of terms where even terms must be + or -
         nterms = len(terms)
         if nterms % 2 != 1 :
@@ -157,28 +163,79 @@ def dInterp(term, dunit) :
             else :
                 if term[0] == "D" :
                     # This is a distance calculation
-                    print("DEBUG: DISTANCE")
-                    terms2.append(term)
-                if term[0] == "R" :
-                    print("DEBUG: RADIUS")
-                    terms2.append(term)
-    elif isinstance(term, tuple) :
-        print("DEBUG: %s is a tuple" % repr(term))
-    elif isinstance(term, list) :
-        print("DEBUG: %s is a list" % repr(term))
+                    d = dInterpDist(term, dunit)
+                    terms2.append(d)
+                elif term[0] == "R" :
+                    r = dInterpRadius(term, dunit)
+                    terms2.append(r)
+                elif term[0] in ("(","[") :
+                    # Expecting regular distance term
+                    d, du = eval(term)
+                    d *= uconv(dist_db, du, dunit)
+                    terms2.append(d)
+                    
+        # Compine the distance terms
+
+        dtot = 0.0
+        op = None
+        for i, x in enumerate(terms2) :
+            if i % 2 == 0 :
+                if op == '+' or op is None :
+                    dtot += x
+                elif op == '-' :
+                    dtot -= x
+            else :
+                op = x
+
+        return dtot
+        
+    elif isinstance(term, list) or isinstance(term, tuple) :
+        d, du = term
+        d *= uconv(dist_db, du, dunit)
+        return d
 
 
 def dInterpDist(term, dunit="m") :
+    '''Operates on a string "D('body1', 'body2')"
+    '''
     
     if term[0] != "D" :
         raise Exception("Not a distance term")
 
     b1, b2 = eval(term[1:])
 
-    b1_rec = body_db[b1]
-    b2_rec = body_db[b2]
+    b1_rec = bodies_db[b1]
+    b2_rec = bodies_db[b2]
 
+    try :
+        if "satellites" in b1_rec :
+            d, du = b1_rec["satellites"][b2]
+        else :
+            d, du = b2_rec["satellites"][b1]
+    except KeyError :
+        raise Exception("Could not look up distance between %s and %s" % (b1, b2))
+
+    d *= uconv(dist_db, du, dunit)
+
+    return d
+
+
+def dInterpRadius(term, dunit="m") :
+
+    if term[0] != "R" :
+        raise Exception("Not a radius term")
+
+    body = eval(term[1:])
+
+    body_rec = bodies_db[body]
+
+    R, Ru = body_rec["R"]
+
+    R *= uconv(dist_db, Ru, dunit)
+
+    return R
     
+
 
 def dvHohmannApo(body, r_peri, r_apo) :
     '''DV computed when thrusting at apoapsis to change periapsis.
@@ -228,17 +285,30 @@ def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
     
     for m in maneuvers :
+        
         mtype = m["type"]
 
         if mtype == "launch" :
             dv = dvOrbit(m["body"], m["orbit"])
             print("DEBUG: DV FOR LAUNCH:", dv)
 
-        if mtype == "hperi" :
+        elif mtype == "hperi" :
             peri = m["peri"]
             apo = m["apo"]
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
+            dv = dvHohmannPeri(m["body"], (p,"m"), (a,"m"))
+            print("DEBUG: DV FOR HPERI-%s-%s-%s: %s" % (m["body"],p,a, dv))
+
+        elif mtype == "hapo" :
+            peri = m["peri"]
+            apo = m["apo"]
+            p = dInterp(peri, "m")
+            a = dInterp(apo, "m")
+            dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
+            print("DEBUG: DV FOR HAPO-%s-%s-%s: %s" % (m["body"],p,a, dv))
+
+            
 
 def dvOrbit(body, alt) :
     

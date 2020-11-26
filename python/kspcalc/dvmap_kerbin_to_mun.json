@@ -6,7 +6,14 @@
     },
     {
 	"type" : "hperi",
+	"body" : "Kerbin",
 	"peri" : [100,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+	"type" : "hapo",
+	"body" : "Kerbin",
+	"peri" : [45,"km"],
 	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     }
 ]
