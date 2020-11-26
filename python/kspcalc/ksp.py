@@ -42,7 +42,7 @@ isp_db = {
 }
 
 
-length_db = {
+dist_db = {
     # number of meters in unit
     "m" : 1.0,
     "km" : 1E3,
@@ -126,9 +126,23 @@ def analyzeRocket(rocket_def) :
             x1 = -0.5*kerbin_ground_g*((isp*mfuel/thr)**2)
             x2 = (isp**2)/thr*(m*math.log(m/m0)+mfuel)
             h_at_stage = x1+x2
-            h_at_stage *= uconv(length_db, "m", "km")
+            h_at_stage *= uconv(dist_db, "m", "km")
             print("Alt at end of stage: %s km" % h_at_stage)
 
+
+def dInterp(term, dunit) :
+    '''Interpret a distance term
+    '''
+    if isinstance(term, str) :
+        print("DEBUG: %s is a string" % repr(term))
+        terms = term.split()
+        print("DEBUG: TERMS IN STRING:", repr(terms))
+    elif isinstance(term, tuple) :
+        print("DEBUG: %s is a tuple" % repr(term))
+    elif isinstance(term, list) :
+        print("DEBUG: %s is a list" % repr(term))
+
+    
 
 def dvHohmannApo(body, r_peri, r_apo) :
     '''DV computed when thrusting at apoapsis to change periapsis.
@@ -139,10 +153,10 @@ def dvHohmannApo(body, r_peri, r_apo) :
     (R, Ru) = body_rec["R"]
     
     rperi, rperiu = r_peri
-    rperi *= uconv(length_db, rperiu, "m")
+    rperi *= uconv(dist_db, rperiu, "m")
     
     rapo, rapou = r_apo
-    rapo *= uconv(length_db, rapou, "m")
+    rapo *= uconv(dist_db, rapou, "m")
 
     A = math.sqrt(GM/(rapo + R))
     B = 1.0 - math.sqrt(2.0*(rperi + R)/(rperi + rapo + 2.0*R))
@@ -159,10 +173,10 @@ def dvHohmannPeri(body, r_peri, r_apo) :
     (R, Ru) = body_rec["R"]
     
     rperi, rperiu = r_peri
-    rperi *= uconv(length_db, rperiu, "m")
+    rperi *= uconv(dist_db, rperiu, "m")
     
     rapo, rapou = r_apo
-    rapo *= uconv(length_db, rapou, "m")
+    rapo *= uconv(dist_db, rapou, "m")
 
     A = math.sqrt(GM/(rperi + R))
     B = math.sqrt(2.0*(rapo + R)/(rperi + rapo + 2.0*R)) - 1.0
@@ -172,8 +186,19 @@ def dvHohmannPeri(body, r_peri, r_apo) :
 
 def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
-    pass
+    
+    for m in maneuvers :
+        mtype = m["type"]
 
+        if mtype == "launch" :
+            dv = dvOrbit(m["body"], m["orbit"])
+            print("DEBUG: DV FOR LAUNCH:", dv)
+
+        if mtype == "hperi" :
+            peri = m["peri"]
+            apo = m["apo"]
+            p = dInterp(peri, "m")
+            a = dInterp(apo, "m")
 
 def dvOrbit(body, alt) :
     
@@ -187,7 +212,7 @@ def dvOrbit(body, alt) :
     (GM, GMu) = body_rec["GM"]
     (R, Ru) = body_rec["R"]
 
-    alt *= uconv(length_db, altu,"m")
+    alt *= uconv(dist_db, altu,"m")
     
     r = R + alt
 
@@ -217,7 +242,7 @@ def g(body, alt) :
     (GM, GMu) = body_rec["GM"]
     (R, Ru) = body_rec["R"]
 
-    alt *= uconv(length_db, altu,"m")
+    alt *= uconv(dist_db, altu,"m")
     
     r = R + alt
 
@@ -244,7 +269,7 @@ def orbitV(body, alt) :
     (GM, GMu) = body_rec["GM"]
     (R, Ru) = body_rec["R"]
 
-    alt *= uconv(length_db, altu, "m")
+    alt *= uconv(dist_db, altu, "m")
     
     r = R + alt
 

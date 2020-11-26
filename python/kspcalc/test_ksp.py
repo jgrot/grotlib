@@ -1,6 +1,7 @@
 import sys
 
 import compare as cmp
+import json
 import ksp
 
 if __name__ == "__main__" :
@@ -39,3 +40,8 @@ if __name__ == "__main__" :
     truth = 267.8140180540594
     test = ksp.dvHohmannApo("Kerbin", (100,"km"), (30,"Mm"))
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
+
+    print("Testing dvInterp with dvmap_kerbin_to_mun.json")
+    with open("dvmap_kerbin_to_mun.json", "rt") as f :
+        maneuvers = json.load(f)
+    ksp.dvInterp( maneuvers )
