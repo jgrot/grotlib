@@ -127,4 +127,7 @@ if __name__ == "__main__" :
     print("Testing dvInterp with dvmap_kerbin_to_mun.json")
     with open("dvmap_kerbin_to_mun.json", "rt") as f :
         maneuvers = json.load(f)
-    ksp.dvInterp( maneuvers )
+    truth = 3856.5889941301416
+    test = ksp.dvInterp( maneuvers )
+    if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
+    

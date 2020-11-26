@@ -283,6 +283,8 @@ def dvHohmannPeri(body, r_peri, r_apo) :
 
 def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
+
+    dv_tot = 0.0
     
     for m in maneuvers :
         
@@ -290,7 +292,7 @@ def dvInterp(maneuvers) :
 
         if mtype == "launch" :
             dv = dvOrbit(m["body"], m["orbit"])
-            print("DEBUG: DV FOR LAUNCH:", dv)
+            # print("DEBUG: DV FOR LAUNCH:", dv)
 
         elif mtype == "hperi" :
             peri = m["peri"]
@@ -298,7 +300,7 @@ def dvInterp(maneuvers) :
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
             dv = dvHohmannPeri(m["body"], (p,"m"), (a,"m"))
-            print("DEBUG: DV FOR HPERI-%s-%s-%s: %s" % (m["body"],p,a, dv))
+            # print("DEBUG: DV FOR HPERI-%s-%s-%s: %s" % (m["body"],p,a, dv))
 
         elif mtype == "hapo" :
             peri = m["peri"]
@@ -306,9 +308,11 @@ def dvInterp(maneuvers) :
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
             dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
-            print("DEBUG: DV FOR HAPO-%s-%s-%s: %s" % (m["body"],p,a, dv))
+            # print("DEBUG: DV FOR HAPO-%s-%s-%s: %s" % (m["body"],p,a, dv))
 
-            
+        dv_tot += dv
+
+    return dv_tot
 
 def dvOrbit(body, alt) :
     
