@@ -421,7 +421,7 @@ if __name__ == "__main__" :
     cmd_craft.add_argument("fpath", help="Name of a craft JSON file.  If file can't be found, then generates a template to file to the name")
 
     # Command "dvOrbit"
-    cmd_dvOrbit = subparsers.add_parser("dvOrbit", help="Computes circular orbital velocity")
+    cmd_dvOrbit = subparsers.add_parser("dvOrbit", help="Computes DV to get into circular orbit")
     cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
