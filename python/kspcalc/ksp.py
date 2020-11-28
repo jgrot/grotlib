@@ -8,6 +8,7 @@
 import argparse
 import json
 import math
+import scipy.optimize as spop
 import os
 import sys
 
@@ -374,6 +375,42 @@ def listOfBodyNames(sep=" | ") :
     body_names = bodies_db.keys()
     return sep.join(body_names)
 
+
+def mFuelToReachAlt(alt, body, Isp, T, Me) :
+    '''Compute fuel needed for a first stage to reach a certain altitude
+
+    Params:
+
+    alt  (alt, "altu")
+    body Body launching from
+    Isp  Units of seconds
+    T    Units of Newtons
+    Me   (m, "mu") Mass (empty) after fuel is spent
+    '''
+
+    alt, altu = alt
+    alt *= uconv(dist_db, altu, "m")
+    Isp *= 9.81
+    g_ground = g(body, (0,"m"))
+    Me, Meu = Me
+
+    Me *= uconv(mass_db, Meu, "kg")
+    
+    def dv(Mf) :
+        return Isp*(math.log((Me + Mf)/Me) - g_ground*Mf/T)
+
+    def h(Mf) :
+        return -0.5*g_ground*((Isp/T)**2) + (Isp**2)/T*(Me*math.log(Me/(Me+Mf)) + Mf)
+
+    def F(Mf) :
+        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf))
+
+    # The guess is zero fuel.  fsolve returns a list of zeros, so take first element.
+    mfuel_kg = spop.fsolve( F, 0.0 )[0]
+    
+    mfuel_t = mfuel_kg*uconv(mass_db, "kg", "t")
+
+    return mfuel_t
 
 def orbitV(body, alt) :
     
