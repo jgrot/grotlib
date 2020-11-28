@@ -10,11 +10,8 @@ Welcome to kspcalc's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-.. automodule:: ksp
-   :members:
-   
-
-
+   ksp
+	     
 Indices and tables
 ==================
 

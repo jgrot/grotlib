@@ -442,8 +442,11 @@ def uconv(db, ufrom, uto) :
     return db[ufrom] / db[uto]
 
 
-if __name__ == "__main__" :
-    
+def main() :
+    '''Command Line Interface
+
+    Commands: g, craft, dvOrbit, orbitV
+    '''
     parser = argparse.ArgumentParser(description="KSP Calculator")
 
     subparsers = parser.add_subparsers(help="Commands", dest="command")
@@ -511,3 +514,7 @@ if __name__ == "__main__" :
 
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
+
+
+if __name__ == "__main__" :
+    main()
