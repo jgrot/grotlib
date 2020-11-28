@@ -6,6 +6,15 @@
 Welcome to kspcalc's documentation!
 ===================================
 
+To set up the (bash) environment, run
+
+.. math::
+   x=y
+
+::
+   $ source <path to grotlib>/python/sentnv.sh
+
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

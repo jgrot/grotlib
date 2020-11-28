@@ -379,13 +379,25 @@ def listOfBodyNames(sep=" | ") :
 def mFuelToReachAlt(alt, body, Isp, T, Me) :
     '''Compute fuel needed for a first stage to reach a certain altitude
 
+    Solves for mF in the equation below, such that the kinetic energy
+    after stage 1 exhausts is eaten up by the remaining potential
+    energy to get to the final altitude.
+
+    .. math::
+       1/2 (\Delta v(m_F))^2 - g(h-h_{\Delta v}(m_F)) = 0
+
     Params:
 
     alt  (alt, "altu")
+
     body Body launching from
+
     Isp  Units of seconds
+
     T    Units of Newtons
+
     Me   (m, "mu") Mass (empty) after fuel is spent
+
     '''
 
     alt, altu = alt
