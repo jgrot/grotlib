@@ -1,19 +1,59 @@
 [
     {
-	"type"  : "launch",
-	"body"  : "Kerbin",
-	"orbit" : [100,"km"]
+        "type": "launch",
+        "desc": "Launch from Kerbin to circular orbit",
+        "body": "Kerbin",
+        "orbit": [
+            100,
+            "km"
+        ]
     },
     {
-	"type" : "hperi",
-	"body" : "Kerbin",
-	"peri" : [100,"km"],
-	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+        "type": "hperi",
+        "desc": "Extend orbit to the Mun",
+        "body": "Kerbin",
+        "peri": [
+            100,
+            "km"
+        ],
+        "apo": "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     },
     {
-	"type" : "hapo",
-	"body" : "Kerbin",
-	"peri" : [45,"km"],
-	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+        "type": "launch",
+        "desc": "Land on Mun",
+        "body": "Mun",
+        "orbit": [
+            100,
+            "km"
+        ]
+    },
+    {
+        "type": "launch",
+        "desc": "Launch from Mun",
+        "body": "Mun",
+        "orbit": [
+            100,
+            "km"
+        ]
+    },
+    {
+        "type": "hapo",
+        "desc": "Pull orbit into Kerbin",
+        "body": "Kerbin",
+        "peri": [
+            45,
+            "km"
+        ],
+        "apo": "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+        "type": "hperi",
+        "desc": "Reduce orbital energy",
+        "body": "Kerbin",
+        "peri": [
+            45,
+            "km"
+        ],
+        "apo": "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     }
 ]

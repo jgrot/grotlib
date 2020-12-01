@@ -8,9 +8,10 @@
 import argparse
 import json
 import math
-import scipy.optimize as spop
 import os
+import scipy.optimize as spop
 import sys
+import tabulate
 
 # Verify Python version
 if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
@@ -80,6 +81,49 @@ template_craft = [
         ]
     }
     )
+]
+
+
+template_maneuvers = [
+    {
+        "type"  : "launch",
+        "desc"  : "Launch from Kerbin to circular orbit",
+	"body"  : "Kerbin",
+	"orbit" : [100,"km"]
+    },
+        {
+	"type" : "hperi",
+        "desc" : "Extend orbit to the Mun",
+	"body" : "Kerbin",
+	"peri" : [100,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+        "type"  : "launch",
+        "desc"  : "Land on Mun",
+	"body"  : "Mun",
+	"orbit" : [100,"km"]
+    },
+    {
+        "type"  : "launch",
+        "desc"  : "Launch from Mun",
+	"body"  : "Mun",
+	"orbit" : [100,"km"]
+    },
+    {
+	"type" : "hapo",
+        "desc" : "Pull orbit into Kerbin",
+	"body" : "Kerbin",
+	"peri" : [45,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+	"type" : "hperi",
+        "desc" : "Reduce orbital energy",
+	"body" : "Kerbin",
+	"peri" : [45,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
 ]
 
 
@@ -292,14 +336,23 @@ def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
 
     dv_tot = 0.0
+
+    tabrows = []
     
     for m in maneuvers :
+        tabrow = []
+
+        try :
+            tabrow.append(m['desc'])
+        except :
+            tabrow.append("Maneuver")
         
         mtype = m["type"]
 
+        tabrow.append(mtype)
+        
         if mtype == "launch" :
             dv = dvOrbit(m["body"], m["orbit"])
-            # print("DEBUG: DV FOR LAUNCH:", dv)
 
         elif mtype == "hperi" :
             peri = m["peri"]
@@ -307,7 +360,6 @@ def dvInterp(maneuvers) :
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
             dv = dvHohmannPeri(m["body"], (p,"m"), (a,"m"))
-            # print("DEBUG: DV FOR HPERI-%s-%s-%s: %s" % (m["body"],p,a, dv))
 
         elif mtype == "hapo" :
             peri = m["peri"]
@@ -315,10 +367,16 @@ def dvInterp(maneuvers) :
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
             dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
-            # print("DEBUG: DV FOR HAPO-%s-%s-%s: %s" % (m["body"],p,a, dv))
-
+            
         dv_tot += dv
 
+        tabrow.append(dv)
+        tabrow.append(dv_tot)
+
+        tabrows.append(tabrow)
+        
+    print(tabulate.tabulate(tabrows, headers=["Description","Type","DV","DV Sum"]))
+    
     return dv_tot
 
 def dvOrbit(body, alt) :
@@ -463,19 +521,23 @@ def main() :
 
     subparsers = parser.add_subparsers(help="Commands", dest="command")
 
-    # Command "g"
-    cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
-    cmd_g.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
-    cmd_g.add_argument("alt", help="\"(alt, 'unit')\"")
-
     # Command "craft"
     cmd_craft = subparsers.add_parser("craft", help="Analyzes a set of craft")
     cmd_craft.add_argument("fpath", help="Name of a craft JSON file.  If file can't be found, then generates a template to file to the name")
 
+    # Command "dvMap"
+    cmd_dvMap = subparsers.add_parser("dvMap", help="Computes DV map for a set of maneuvers")
+    cmd_dvMap.add_argument("fpath", help="Name of a maneuvers JSON file.  If file can't be found, then generates a template to file to the name")
+    
     # Command "dvOrbit"
     cmd_dvOrbit = subparsers.add_parser("dvOrbit", help="Computes DV to get into circular orbit")
     cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
+
+    # Command "g"
+    cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
+    cmd_g.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_g.add_argument("alt", help="\"(alt, 'unit')\"")
 
     # Command "orbitV"
     cmd_orbitV = subparsers.add_parser("orbitV", help="Computes circular orbital velocity")
@@ -499,6 +561,17 @@ def main() :
             if craft[0] == "rocket" :
                 analyzeRocket(craft)
 
+    if args.command == "dvMap" :
+        if not os.access( args.fpath, os.F_OK ) :
+            print("Generating template maneivers file \"%s\"" % args.fpath)
+            with open(args.fpath, "wt") as man_file :
+                json.dump(template_maneuvers, man_file, indent=4)
+            exit(0)
+            
+        with open(args.fpath, "rt") as man_file :
+            maneuvers = json.load(man_file)
+
+        dvInterp(maneuvers)
                 
     if args.command == "dvOrbit" :
         print("Body: %s" % args.body)
