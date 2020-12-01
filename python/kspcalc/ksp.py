@@ -386,17 +386,11 @@ def mFuelToReachAlt(alt, body, Isp, T, Me) :
     .. math::
        1/2 (\Delta v(m_F))^2 - g(h-h_{\Delta v}(m_F)) = 0
 
-    Params:
-
-    alt  (alt, "altu")
-
-    body Body launching from
-
-    Isp  Units of seconds
-
-    T    Units of Newtons
-
-    Me   (m, "mu") Mass (empty) after fuel is spent
+    :param (alt,"altu") alt: Altitude
+    :param str body: Body launching from
+    :param float Isp:  Units of seconds
+    :param float T:    Units of Newtons
+    :param (m,"mu") Me: Mass (empty) after fuel is spent
 
     '''
 
