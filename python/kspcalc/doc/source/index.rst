@@ -3,17 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to kspcalc's documentation!
-===================================
-
-To set up the (bash) environment, run
-
-.. math::
-   x=y
-
-::
-   $ source <path to grotlib>/python/sentnv.sh
-
+KSPCalc
+=======
 
 .. toctree::
    :maxdepth: 2

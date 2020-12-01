@@ -84,6 +84,12 @@ template_craft = [
 
 
 def analyzeRocket(rocket_def) :
+    '''Analyze a rocket DV specified in a JSON file
+
+    Takes into account gravity when computing the DV for the first stage.
+
+    :param string rocket_def: Path to JSON file containing the rocket definition.
+    '''
 
     craft_type, craft_def = rocket_def
     
