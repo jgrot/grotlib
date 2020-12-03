@@ -155,7 +155,7 @@ def analyzeRocket(rocket_def) :
 
         if last_stage_m is not None :
             if m0 != last_stage_m :
-                print("\nWARNING: insconsistent inter-stage masses\n")
+                print("\nWARNING: inconsistent inter-stage masses\n")
         last_stage_m = m
 
         isp, ispu = stage["Isp"]
