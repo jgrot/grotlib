@@ -440,27 +440,30 @@ def listOfBodyNames(sep=" | ") :
     return sep.join(body_names)
 
 
-def mFuelToReachAlt(alt, body, Isp, T, Me) :
+def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0) :
     '''Compute fuel needed for a first stage to reach a certain altitude
 
     Solves for mF in the equation below, such that the kinetic energy
     after stage 1 exhausts is eaten up by the remaining potential
-    energy to get to the final altitude.
+    energy to get to the final altitude with a final velocity (v_f)
 
     .. math::
-       1/2 (\Delta v(m_F))^2 - g(h-h_{\Delta v}(m_F)) = 0
+       1/2 (\Delta v(m_F))^2 - g(h-h_{\Delta v}(m_F)) - 1/2 {v_f}^2 = 0
 
     :param (alt,"altu") alt: Altitude
     :param str body: Body launching from
     :param float Isp:  Units of seconds
-    :param float T:    Units of Newtons
+    :param (T,"Tu") T: Thrust
     :param (m,"mu") Me: Mass (empty) after fuel is spent
+    :param float vf: speed at target altitude
 
     '''
 
     alt, altu = alt
     alt *= uconv(dist_db, altu, "m")
     Isp *= 9.81
+    T, Tu = T
+    T *= uconv(force_db, Tu, "N")
     g_ground = g(body, (0,"m"))
     Me, Meu = Me
 
@@ -473,7 +476,7 @@ def mFuelToReachAlt(alt, body, Isp, T, Me) :
         return -0.5*g_ground*((Isp/T)**2) + (Isp**2)/T*(Me*math.log(Me/(Me+Mf)) + Mf)
 
     def F(Mf) :
-        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf))
+        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf)) - 0.5*(vf**2)
 
     # The guess is zero fuel.  fsolve returns a list of zeros, so take first element.
     mfuel_kg = spop.fsolve( F, 0.0 )[0]
@@ -534,6 +537,15 @@ def main() :
     cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
+    # Command "fuel2alt"
+    cmd_fuel2alt = subparsers.add_parser("fuel2alt", help="Computes first stage fuel to reach a target altitude and speed")
+    cmd_fuel2alt.add_argument("alt", help="\"(alt, 'unit')\"")
+    cmd_fuel2alt.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_fuel2alt.add_argument("Isp", type=float, help="Isp (s)")
+    cmd_fuel2alt.add_argument("T", help="\"(thrust, 'unit')\"")
+    cmd_fuel2alt.add_argument("Me", help="Mass when empty \"(Mass, 'unit')\"")
+    cmd_fuel2alt.add_argument("speed", type=float, default=0.0, help="Speed at target altitude (m/s), default=0")
+
     # Command "g"
     cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
     cmd_g.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
@@ -581,7 +593,24 @@ def main() :
 
         print("DV to reach circular orbit: %s" % dvOrbit(args.body, altitude))
 
-                
+    if args.command == "fuel2alt" :
+        alt = eval(args.alt)
+        body = args.body
+        Isp = args.Isp
+        T = eval(args.T)
+        Me = eval(args.Me)
+        speed = args.speed
+
+        m_t = mFuelToReachAlt(alt, body, Isp, T, Me, speed)
+        solid_units = m_t/.0075
+        liq_units = m_t/.005
+        tabrows=[
+            ["Fuel mass (t)", m_t],
+            ["Solid units", solid_units],
+            ["Liquid units", liq_units]
+        ]
+        print(tabulate.tabulate(tabrows))
+        
     if args.command == "g" :
         print("Body: %s" % args.body)
         altitude = eval(args.alt)

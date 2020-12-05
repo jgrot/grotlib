@@ -134,5 +134,5 @@ if __name__ == "__main__" :
     print("Testing mFuelToReachAlt")
     truth = 726.6922810772608
     # Note: 0.0075 t per unit of solid fuel
-    test = ksp.mFuelToReachAlt((44,"km"), "Kerbin", 175, 250E3, (6.3,"t"))/0.0075
+    test = ksp.mFuelToReachAlt((44,"km"), "Kerbin", 175, (250E3,"N"), (6.3,"t"))/0.0075
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
