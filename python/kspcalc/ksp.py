@@ -143,6 +143,8 @@ def analyzeRocket(rocket_def) :
     print("\nRocket \"%s\"" % craft_def["name"])
 
     last_stage_m = None
+
+    dvtot = 0.0
     
     for istage, stage in enumerate(craft_def['stages']) :
         print("\nStage %i" % (istage+1))
@@ -188,6 +190,12 @@ def analyzeRocket(rocket_def) :
             h_at_stage = x1+x2
             h_at_stage *= uconv(dist_db, "m", "km")
             print("Alt at end of stage: %s km" % h_at_stage)
+        else :
+            dv_final = dv
+
+        dvtot += dv_final
+
+        print("DV Total:", dvtot)
 
 
             
@@ -440,7 +448,7 @@ def listOfBodyNames(sep=" | ") :
     return sep.join(body_names)
 
 
-def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0) :
+def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0, Edrag=0.0) :
     '''Compute fuel needed for a first stage to reach a certain altitude
 
     Solves for mF in the equation below, such that the kinetic energy
@@ -456,6 +464,7 @@ def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0) :
     :param (T,"Tu") T: Thrust
     :param (m,"mu") Me: Mass (empty) after fuel is spent
     :param float vf: speed at target altitude
+    :param float Edrag: (J/kg) (g*Dh) Energy per mass lost due to drag.  Have to do an experiment to get it.
 
     '''
 
@@ -476,7 +485,7 @@ def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0) :
         return -0.5*g_ground*((Isp/T)**2) + (Isp**2)/T*(Me*math.log(Me/(Me+Mf)) + Mf)
 
     def F(Mf) :
-        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf)) - 0.5*(vf**2)
+        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf)) - 0.5*(vf**2) - Edrag
 
     # The guess is zero fuel.  fsolve returns a list of zeros, so take first element.
     mfuel_kg = spop.fsolve( F, 0.0 )[0]
@@ -544,7 +553,8 @@ def main() :
     cmd_fuel2alt.add_argument("Isp", type=float, help="Isp (s)")
     cmd_fuel2alt.add_argument("T", help="\"(thrust, 'unit')\"")
     cmd_fuel2alt.add_argument("Me", help="Mass when empty \"(Mass, 'unit')\"")
-    cmd_fuel2alt.add_argument("speed", type=float, default=0.0, help="Speed at target altitude (m/s), default=0")
+    cmd_fuel2alt.add_argument("speed", type=float, help="Speed at target altitude (m/s).")
+    cmd_fuel2alt.add_argument("edrag", type=float, help="Drag energy lost (J/kg).  Right now have to do an experiment to get this.")
 
     # Command "g"
     cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
@@ -600,8 +610,9 @@ def main() :
         T = eval(args.T)
         Me = eval(args.Me)
         speed = args.speed
+        edrag = args.edrag
 
-        m_t = mFuelToReachAlt(alt, body, Isp, T, Me, speed)
+        m_t = mFuelToReachAlt(alt, body, Isp, T, Me, speed, edrag)
         solid_units = m_t/.0075
         liq_units = m_t/.005
         tabrows=[
