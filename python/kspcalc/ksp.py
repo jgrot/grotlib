@@ -68,6 +68,10 @@ mass_db = {
 }
 
 
+# Unit DB's
+udbs = [ dist_db, isp_db, force_db, mass_db ]
+
+
 template_craft = [
     ( "rocket", {
         "name" : "Templ 1",
@@ -441,8 +445,7 @@ def g(body, alt) :
     return g
 
 
-
-def listOfBodyNames(sep=" | ") :
+def listOfBodyNames(sep = " | ") :
     body_names = bodies_db.keys()
     return sep.join(body_names)
 
@@ -492,6 +495,7 @@ def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0, Edrag=0.0) :
     mfuel_t = mfuel_kg*uconv(mass_db, "kg", "t")
 
     return mfuel_t
+
 
 def orbitV(body, alt) :
     
@@ -559,11 +563,17 @@ def main() :
     cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
     cmd_g.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_g.add_argument("alt", help="\"(alt, 'unit')\"")
+    cmd_g.add_argument("--mass", help="Optionally compute force on a mass at the altitude\"(mass, 'unit')\"")
 
     # Command "orbitV"
     cmd_orbitV = subparsers.add_parser("orbitV", help="Computes circular orbital velocity")
     cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
+
+    # Command "uconv"
+    cmd_uconv = subparsers.add_parser("uconv", help="Call the units converter function")
+    cmd_uconv.add_argument("vin", help="\"(value, 'unit')\"")
+    cmd_uconv.add_argument("uout", help="Unit out")
     
     args = parser.parse_args()
 
@@ -627,7 +637,14 @@ def main() :
         alt, unit = altitude
         print("Altitude: %s %s" % (alt, unit))
 
-        print("Accel of gravity: %s" % g(args.body, altitude))
+        accel_g = g(args.body, altitude)
+        print("Accel of gravity: %s" % accel_g)
+
+        if args.mass is not None :
+            mass, umass = eval( args.mass )
+            mass2 = mass * uconv( mass_db, umass, "kg" )
+            force_kN = accel_g * mass2 / 1E3
+            print("Force on mass of %f %s is %f kN" % ( mass, umass, force_kN ))
 
             
     if args.command == "orbitV" :
@@ -638,6 +655,26 @@ def main() :
 
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
+
+    if args.command == "uconv" :
+        value, unit = eval( args.vin )
+
+        # Find database with input unit.  If the unit is not found,
+        # then udb will be the last one in the list and we'll get an
+        # error downstream.
+        for udb in udbs :
+            if unit in udb :
+                break
+
+        try :
+            value2 = value * uconv( udb, unit, args.uout )
+        except :
+            value2 = None
+
+        if value2 is not None :
+            print("%f %s -> %f %s" % ( value, unit, value2, args.uout ))
+        else :
+            print("Could not convert %f %s" % (value, unit) )
 
 
 if __name__ == "__main__" :
