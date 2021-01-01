@@ -197,7 +197,6 @@ def analyzeRocket(rocket_def) :
 
         print("DV Total:", dvtot)
 
-
             
 def dInterp(term, dunit="m") :
     '''General distance interpreter.  Allowed terms are:
@@ -293,7 +292,6 @@ def dInterpRadius(term, dunit="m") :
     R *= uconv(dist_db, Ru, dunit)
 
     return R
-    
 
 
 def dvHohmannApo(body, r_peri, r_apo) :
@@ -386,6 +384,7 @@ def dvInterp(maneuvers) :
     print(tabulate.tabulate(tabrows, headers=["Description","Type","DV","DV Sum"]))
     
     return dv_tot
+
 
 def dvOrbit(body, alt) :
     
