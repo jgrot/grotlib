@@ -19,6 +19,12 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
     sys.stderr.write("*** Wrong python version.  Make sure virtual environment is activated.\n")
     exit(1)
 
+angle_db = {
+    # Number of radians in angle unit
+    "radians" : 1.0,
+    "degrees" : math.pi / 180.0
+}
+    
 bodies_db = {
     "Kerbin" : {
         "GM" : (3.53E12, "m3/s2"),
@@ -47,7 +53,7 @@ force_db = {
 
 isp_db = {
     # Number of s in ISP unit
-    "s" : 1.0,
+    "s" : 1.0, # KSP Isp units are seconds
     "m/s" : 1.0/9.81
 }
 
@@ -377,7 +383,12 @@ def dvInterp(maneuvers) :
             p = dInterp(peri, "m")
             a = dInterp(apo, "m")
             dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
-            
+
+        elif mtype == "turn" :
+            speed = m["speed"]
+            ang = m["angle"]
+            dv = dvTurn(speed, ang)
+
         dv_tot += dv
 
         tabrow.append(dv)
@@ -413,6 +424,24 @@ def dvOrbit(body, alt) :
     dvOrbit = math.sqrt((GM/r) + 2.0*g_ground*alt)
 
     return dvOrbit
+
+
+def dvTurn(speed_xpr, theta) :
+    '''Computes an on DV needed for a particular turn.
+
+    :param speed_xpr float_or_python_expr: orbital speed of craft
+    :param theta (ang, 'u_ang'): turn angle
+    '''
+
+    if isinstance(speed_xpr, float) or isinstance(speed_xpr, int) :
+        speed = float(speed_xpr)
+    else :
+        speed = eval(speed_xpr)
+    
+    theta, u_theta = theta
+    theta *= uconv(angle_db, u_theta, "radians")
+
+    return speed * theta
 
 
 def g(body, alt) :

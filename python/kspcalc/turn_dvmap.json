@@ -1,0 +1,15 @@
+[
+    {
+        "type": "turn",
+        "desc": "Turn test",
+        "speed": 2000,
+	"angle" : [90,"degrees"]
+    },
+
+    {
+	"type": "turn",
+	"desc": "Turn with speed calc",
+	"speed" : "orbitV('Kerbin',(78,'km'))",
+	"angle" : [90,"degrees"]
+    }
+]
