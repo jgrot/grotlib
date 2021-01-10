@@ -305,7 +305,7 @@ def dInterpRadius(term, dunit="m") :
 
 
 def dvHohmannApo(body, r_peri, r_apo) :
-    '''DV computed when thrusting at apoapsis to change periapsis.
+    '''DV computed when thrusting a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
     '''
     
     body_rec = bodies_db[body]
@@ -327,7 +327,7 @@ def dvHohmannApo(body, r_peri, r_apo) :
     
 
 def dvHohmannPeri(body, r_peri, r_apo) :
-    '''DV computed when thrusting at periapsis to change apoapsis.
+    '''DV computed when thrusting a) prograde at peri to obtain elliptical orbit, or b) retrograde at peri to obtain circular orbit.
     '''
     
     body_rec = bodies_db[body]
