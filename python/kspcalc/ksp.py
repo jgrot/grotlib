@@ -70,7 +70,8 @@ dist_db = {
 mass_db = {
     # Number of kgs in unit
     "kg" : 1.0,
-    "t"  : 907.185
+    "t"  : 907.185,
+    "su" : 6.8038875
 }
 
 
@@ -479,12 +480,14 @@ def listOfBodyNames(sep = " | ") :
     return sep.join(body_names)
 
 
-def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0, Edrag=0.0) :
-    '''Compute fuel needed for a first stage to reach a certain altitude
+def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
+    '''Compute fuel or thrust needed for a first stage to reach a certain
+       altitude
 
-    Solves for mF in the equation below, such that the kinetic energy
-    after stage 1 exhausts is eaten up by the remaining potential
-    energy to get to the final altitude with a final velocity (v_f)
+    Solves for fuel mass or thrust in the equation below, such that
+    the kinetic energy after stage 1 exhausts is eaten up by the
+    remaining potential energy to get to the final altitude with a
+    final velocity (v_f)
 
     .. math::
        1/2 (\Delta v(m_F))^2 - g(h-h_{\Delta v}(m_F)) - 1/2 {v_f}^2 = 0
@@ -492,8 +495,9 @@ def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0, Edrag=0.0) :
     :param (alt,"altu") alt: Altitude
     :param str body: Body launching from
     :param float Isp:  Units of seconds
-    :param (T,"Tu") T: Thrust
     :param (m,"mu") Me: Mass (empty) after fuel is spent
+    :param (x,"Xu") x: Mass Fuel (if solve_for=="thrust"), Thrust (if solve_for=="mfuel")
+    :param string solve_for: "thrust" (default) or "mass"
     :param float vf: speed at target altitude
     :param float Edrag: (J/kg) (g*Dh) Energy per mass lost due to drag.  Have to do an experiment to get it.
 
@@ -502,28 +506,48 @@ def mFuelToReachAlt(alt, body, Isp, T, Me, vf=0.0, Edrag=0.0) :
     alt, altu = alt
     alt *= uconv(dist_db, altu, "m")
     Isp *= 9.81
-    T, Tu = T
-    T *= uconv(force_db, Tu, "N")
+    x, Xu = x
     g_ground = g(body, (0,"m"))
     Me, Meu = Me
-
     Me *= uconv(mass_db, Meu, "kg")
     
-    def dv(Mf) :
-        return Isp*(math.log((Me + Mf)/Me) - g_ground*Mf/T)
 
-    def h(Mf) :
-        return -0.5*g_ground*((Isp/T)**2) + (Isp**2)/T*(Me*math.log(Me/(Me+Mf)) + Mf)
+    if solve_for == "thrust":
+        # Easier to solve for inv thrust
+        
+        Mf = x * uconv(mass_db, Xu, "kg")
 
-    def F(Mf) :
-        return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf)) - 0.5*(vf**2) - Edrag
+        def dv(R) :
+            return Isp*(math.log((Me + Mf)/Me) - g_ground*Mf*R)
+        def h(R) :
+            return -0.5*g_ground*((Isp*R)**2) + (Isp**2)*R*(Me*math.log(Me/(Me+Mf)) + Mf)
+        def F(R) :
+            return 0.5*(dv(R)**2) - g_ground*(alt - h(R)) - 0.5*(vf**2) - Edrag
 
-    # The guess is zero fuel.  fsolve returns a list of zeros, so take first element.
-    mfuel_kg = spop.fsolve( F, 0.0 )[0]
+        # The guess is 100 kN.  fsolve returns a list of zeros, so take first element.
+        inv_thrust = spop.fsolve( F, 1E-5 )[0]
     
-    mfuel_t = mfuel_kg*uconv(mass_db, "kg", "t")
+        return 1.0/inv_thrust
+        
+    elif solve_for == "mfuel" :
+        T = x * uconv(force_db, Xu, "N")
 
-    return mfuel_t
+        def dv(Mf) :
+            return Isp*(math.log((Me + Mf)/Me) - g_ground*Mf/T)
+        def h(Mf) :
+            return -0.5*g_ground*((Isp/T)**2) + (Isp**2)/T*(Me*math.log(Me/(Me+Mf)) + Mf)
+        def F(Mf) :
+            return 0.5*(dv(Mf)**2) - g_ground*(alt - h(Mf)) - 0.5*(vf**2) - Edrag
+
+        # The guess is zero fuel.  fsolve returns a list of zeros, so take first element.
+        mfuel_kg = spop.fsolve( F, 0.0 )[0]
+    
+        mfuel_t = mfuel_kg*uconv(mass_db, "kg", "t")
+
+        return mfuel_t
+        
+    else :
+        raise Exception("Bad value for solve_for")
 
 
 def orbitV(body, alt) :
@@ -578,15 +602,16 @@ def main() :
     cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
-    # Command "fuel2alt"
-    cmd_fuel2alt = subparsers.add_parser("fuel2alt", help="Computes first stage fuel to reach a target altitude and speed")
-    cmd_fuel2alt.add_argument("alt", help="\"(alt, 'unit')\"")
-    cmd_fuel2alt.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
-    cmd_fuel2alt.add_argument("Isp", type=float, help="Isp (s)")
-    cmd_fuel2alt.add_argument("T", help="\"(thrust, 'unit')\"")
-    cmd_fuel2alt.add_argument("Me", help="Mass when empty \"(Mass, 'unit')\"")
-    cmd_fuel2alt.add_argument("speed", type=float, help="Speed at target altitude (m/s).")
-    cmd_fuel2alt.add_argument("edrag", type=float, help="Drag energy lost (J/kg).  Right now have to do an experiment to get this.")
+    # Command "jump"
+    cmd_jump = subparsers.add_parser("jump", help="Computes first stage fuel or thrust to reach a target altitude and speed.")
+    cmd_jump.add_argument("alt", help="\"(alt, 'unit')\"")
+    cmd_jump.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_jump.add_argument("Isp", type=float, help="Isp (s)")
+    cmd_jump.add_argument("Me", help="Mass when empty \"(Mass, 'unit')\"")
+    cmd_jump.add_argument("X", help="\"(X, 'unit of X')\" where X is thrust if solving for mass, and vice-versa")
+    cmd_jump.add_argument("solve_for", help="\"thrust\" or \"mass\"")
+    cmd_jump.add_argument("speed", type=float, help="Speed at target altitude (m/s).")
+    cmd_jump.add_argument("edrag", type=float, help="Measured drag energy lost (J/kg) = g*(H_no_drag - H_drag) done with target speed = 0.")
 
     # Command "g"
     cmd_g = subparsers.add_parser("g", help="Compute acceleration due to gravity for a specified body")
@@ -641,24 +666,34 @@ def main() :
 
         print("DV to reach circular orbit: %s" % dvOrbit(args.body, altitude))
 
-    if args.command == "fuel2alt" :
+    if args.command == "jump" :
         alt = eval(args.alt)
         body = args.body
         Isp = args.Isp
-        T = eval(args.T)
         Me = eval(args.Me)
+        X = eval(args.X)
+        solve_for = args.solve_for
         speed = args.speed
         edrag = args.edrag
 
-        m_t = mFuelToReachAlt(alt, body, Isp, T, Me, speed, edrag)
-        solid_units = m_t/.0075
-        liq_units = m_t/.005
-        tabrows=[
-            ["Fuel mass (t)", m_t],
-            ["Solid units", solid_units],
-            ["Liquid units", liq_units]
-        ]
-        print(tabulate.tabulate(tabrows))
+        if solve_for == "mfuel" :
+            m_t = jump(alt, body, Isp, Me, X, solve_for, speed, edrag)
+            solid_units = m_t/.0075
+            liq_units = m_t/.005
+            tabrows=[
+                ["Fuel mass (t)", m_t],
+                ["Solid units", solid_units],
+                ["Liquid units", liq_units]
+            ]
+            print(tabulate.tabulate(tabrows))
+        elif solve_for == "thrust" :
+            thrust = jump(alt, body, Isp, Me, X, solve_for, speed, edrag)
+            tabrows=[
+                ["Thrust", thrust],
+            ]
+            print(tabulate.tabulate(tabrows))
+        else :
+            raise Exception("Bad value for solve_for")
         
     if args.command == "g" :
         print("Body: %s" % args.body)
