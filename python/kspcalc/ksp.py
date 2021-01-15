@@ -603,7 +603,7 @@ def main() :
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
     # Command "jump"
-    cmd_jump = subparsers.add_parser("jump", help="Computes first stage fuel or thrust to reach a target altitude and speed.")
+    cmd_jump = subparsers.add_parser("jump", help="Computes first stage fuel or thrust to reach a target altitude and speed.  Tip: MINIMIZE DRAG ON VEHICLE.")
     cmd_jump.add_argument("alt", help="\"(alt, 'unit')\"")
     cmd_jump.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_jump.add_argument("Isp", type=float, help="Isp (s)")
