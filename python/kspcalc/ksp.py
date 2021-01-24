@@ -420,9 +420,7 @@ def dvOrbit(body, alt) :
     
     r = R + alt
 
-    g_ground = g(body, (0,"m"))
-
-    dvOrbit = math.sqrt((GM/r) + 2.0*g_ground*alt)
+    dvOrbit = math.sqrt((GM/R) - (GM/r))
 
     return dvOrbit
 
