@@ -8,8 +8,10 @@
 import argparse
 import json
 import math
+import numpy as np
 import os
 import scipy.optimize as spop
+from scipy.integrate import ode
 import sys
 import tabulate
 
@@ -136,6 +138,45 @@ template_maneuvers = [
 	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     },
 ]
+
+
+def trajectory2D_solver( dmdt, alpha, isp, GM, R, y0, t0 ) :
+    '''Numerically integrates the planar orbit equations as a function of time.
+    '''
+
+    #
+    # Orbit equations expressed as first order ODE's
+    #
+    # dmdt:   function( t(s), m(kg), r(m), th(rad), vr(m/s), om(rad/s) ) -> kg/s
+    # alpha:  function( t, m, r, th, vr, om ) -> Radians from body normal
+    # isp:    function( t, m, r, th, vr, om ) -> m/s
+    # GM:     real(m^3/s^2)
+    # R:      real(m)
+    # y0:     [ m0(kg), r0(m), th0(radians), vr0(m/s), om0(rad/s) ]
+    # t0:     real(s)
+
+    def thrust(t, m, r, th, vr, om) :
+        return -dmdt(t, m, r, th, vr, om) * isp(t, m, r, th, vr, om) 
+    
+    def a_r(t, m, r, th, vr, om) :
+        return ( thrust(t, m, r, th, vr, om) * math.sin( alpha(t, m, r, th, vr, om) ) / m ) - GM/(r*r)
+
+    def a_th(t, m, r, th, vr, om) :
+        return ( thrust(t, m, r, th, vr, om) * math.cos( alpha(t, m, r, th, vr, om) ) / m ) 
+    
+    def f(t, y) :
+        m, r, th, vr, om = y
+        return [ dmdt(t, m, r, th, vr, om),    # dmdt 
+                 vr,                           # drdt
+                 om,                           # dThdt
+                 a_r(t, m, r, th, vr, om) + r*om*om,       # dvrdt
+                 ( a_th(t, m, r, th, vr, om) - 2*vr*om ) / r   ] # domdt 
+
+    solv = ode( f ).set_integrator( "vode", method="adams" )
+
+    solv.set_initial_value( y0, t0 )
+
+    return solv
 
 
 def analyzeRocket(rocket_def) :
@@ -444,7 +485,7 @@ def dvTurn(speed_xpr, theta) :
 
 
 def g(body, alt) :
-    '''Computes acceleration due to gravity near body "body" at altitude "alt"
+    '''Computes acceleration due to gravity (in m/s^2) near body "body" at altitude "alt"
 
     body: name of body
     alt: tuple, (value, "units")
@@ -622,6 +663,10 @@ def main() :
     cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
 
+    # Command "traj2d"
+    cmd_traj2d = subparsers.add_parser("traj2d", help="Test traj2d")
+    cmd_traj2d.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+
     # Command "uconv"
     cmd_uconv = subparsers.add_parser("uconv", help="Call the units converter function")
     cmd_uconv.add_argument("vin", help="\"(value, 'unit')\"")
@@ -717,7 +762,145 @@ def main() :
 
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
+        
+    if args.command == "traj2d" :
+        print("Body: %s" % args.body)
 
+        m0 = ( 20, "t" )
+        m0_kg = m0[0] * uconv( mass_db, m0[1], "kg" )
+
+        mf = ( 3, "t" )
+        mf_kg = mf[0] * uconv( mass_db, mf[1], "kg" )
+
+        max_burn_time = 100.0
+        dmdt_max = (mf_kg - m0_kg)/max_burn_time
+
+        # T0 = ( 100, "kN" )
+        # T0_N = T0[0] * uconv( force_db, T0[1], "N" )
+
+        Isp0 = ( 175, "s" )
+        Isp0_mps = Isp0[0] * uconv( isp_db, Isp0[1], "m/s" )
+
+        Ispf = ( 300, "s" )
+        Ispf_mps = Ispf[0] * uconv( isp_db, Ispf[1], "m/s" )
+        
+        def dmdt( t, m, r, th, vr, om ) :
+            if m < mf_kg :
+                return 0.0
+
+            alt = r-R
+
+            if alt >= 0.0 and alt < 15E3 :
+                return dmdt_max
+            if alt > 15E3 and alt < 30E3 :
+                return 0.5*dmdt_max
+            if alt > 70E3 and alt < 90E3 :
+                return dmdt_max
+            elif th > math.pi and th < math.pi*1.0001 :
+                return dmdt_max
+            else :
+                return 0.0
+
+        def alpha( t, m, r, th, vr, om ) :
+            
+            vth = r*om
+
+            if r < (R+7.5E3) :
+                return 0.5 * math.pi
+            
+            if vth == 0.0 :
+                a = 0.5 * math.pi
+            else :
+                a = math.atan( vr / vth )
+        
+            return a
+
+        def isp(  t, m, r, th, vr, om ) :
+
+            if r < (R+40.0E3) :
+                return Isp0_mps + (r - R)*(Ispf_mps - Isp0_mps)/40.0E3
+            else :
+                return Ispf_mps
+        
+        
+        body_rec = bodies_db[args.body]
+        (GM, GMu) = body_rec["GM"] # units of m3/s2
+
+        (R, Ru) = body_rec["R"]
+        R *= uconv(dist_db, Ru, "m")
+
+        # TODO TODO TODO TODO : NEED OMEGA OF BODY!!! : TODO TODO TODO TODO
+        om0 = 2.0*math.pi / ( 6.0 * 3600.0 )
+        y0 = [ m0_kg, R, 0.0, 0.0, om0 ]
+        t0 = 0.0
+        t1 = 10000.0
+        solv = trajectory2D_solver( dmdt, alpha, isp, GM, R, y0, t0 )
+
+        soln = [[t0] + y0 ]
+
+        th = 0.0
+        while solv.successful() and th < 4.0*math.pi:
+             m, r, th, vr, om = solv.integrate( solv.t + 0.1 )
+             if r <= R :
+                 print("CRASH!")
+                 break
+             soln.append([solv.t, m, r, th, vr, om ])
+             outs = "%10.2f %10.2f %10.2f %12.5e %10.2f %12.5e" % (solv.t, m, r, th, vr, om)
+             print( outs )
+
+        if True :
+            import matplotlib.pyplot as plt
+
+            x = []
+            y = []
+            for t, m, r, th, vr, om in soln :
+                x.append( r * math.cos( th ) )
+                y.append( r * math.sin( th ) )
+
+            xb = [ min(x), max(x) ]
+            yb = [ min(y), max(y) ]
+
+            xrng = xb[1] - xb[0]
+            yrng = yb[1] - yb[0]
+            
+            maxrng = max( xrng, yrng )
+
+            xpad = 0.5*(maxrng - xrng)
+            ypad = 0.5*(maxrng - yrng)
+
+            xmin = xb[0] - xpad
+            xmax = xb[1] + xpad
+            ymin = yb[0] - ypad
+            ymax = yb[1] + ypad
+            
+            fig, ax = plt.subplots()
+            ax.set_xlim( xmin, xmax )
+            ax.set_ylim( ymin, ymax )
+            ax.set_aspect(1.0)
+            ax.plot(x, y)
+
+            Nth = 100
+            dth = 2.0*math.pi / float(Nth - 1)
+
+            x = []
+            y = []
+            for ith in range(Nth) :
+                th = dth * ith
+                x.append(R*math.cos(th))
+                y.append(R*math.sin(th))
+            ax.plot(x, y)
+
+            x = []
+            y = []
+            for ith in range(Nth) :
+                th = dth * ith
+                x.append((R+70E3)*math.cos(th))
+                y.append((R+70E3)*math.sin(th))
+            ax.plot(x, y)
+
+            plt.show()
+    
+        
     if args.command == "uconv" :
         value, unit = eval( args.vin )
 
