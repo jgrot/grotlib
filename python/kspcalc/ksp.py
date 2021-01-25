@@ -783,22 +783,25 @@ def main() :
 
         Ispf = ( 300, "s" )
         Ispf_mps = Ispf[0] * uconv( isp_db, Ispf[1], "m/s" )
+
+        tt0 = 0.0
+        tt1 = 0.0
         
         def dmdt( t, m, r, th, vr, om ) :
+            global tt0
             if m < mf_kg :
                 return 0.0
 
             alt = r-R
 
-            if alt >= 0.0 and alt < 15E3 :
+            if  t < 70 :
                 return dmdt_max
-            if alt > 15E3 and alt < 30E3 :
-                return 0.5*dmdt_max
-            if alt > 70E3 and alt < 90E3 :
-                return dmdt_max
-            elif th > math.pi and th < math.pi*1.0001 :
-                return dmdt_max
+            elif t > 175 and t < 220 :
+                return 0.5 * dmdt_max
+            elif th > 0.8*math.pi and th < 0.82*math.pi :
+                return 0.1*dmdt_max
             else :
+                tt0 = 0.0
                 return 0.0
 
         def alpha( t, m, r, th, vr, om ) :
@@ -839,7 +842,7 @@ def main() :
         soln = [[t0] + y0 ]
 
         th = 0.0
-        while solv.successful() and th < 4.0*math.pi:
+        while solv.successful() and th < 4.0*math.pi and solv.t < 30000.0:
              m, r, th, vr, om = solv.integrate( solv.t + 0.1 )
              if r <= R :
                  print("CRASH!")
