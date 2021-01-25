@@ -6,12 +6,15 @@
 #
 
 import argparse
+import bisect
+import copy
 import json
 import math
 import numpy as np
 import os
 import scipy.optimize as spop
 from scipy.integrate import ode
+from scipy.interpolate import interp1d
 import sys
 import tabulate
 
@@ -20,6 +23,11 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
     print("PYTHON VERSION ", sys.version)
     sys.stderr.write("*** Wrong python version.  Make sure virtual environment is activated.\n")
     exit(1)
+
+KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
+
+Rgas = 8.3145 # J/mol/K
+AirMmass = 28.84E-3 # kg/mol
 
 angle_db = {
     # Number of radians in angle unit
@@ -34,7 +42,8 @@ bodies_db = {
         "satellites" : {
             "Mun"    : (11.4,"Mm"),
             "Minmus" : (46.4,"Mm")
-        }
+        },
+        "tday" : ( 6, "h" ),
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
@@ -72,13 +81,55 @@ dist_db = {
 mass_db = {
     # Number of kgs in unit
     "kg" : 1.0,
-    "t"  : 907.185,
-    "su" : 6.8038875
+    "t" : 1000.0,
+    "su" : 7.5
 }
 
 
+time_db = {
+    # number of seconds in unit
+    "s" : 1.0,
+    "m" : 60.0,
+    "h" : 3600.0
+}
+
 # Unit DB's
-udbs = [ dist_db, isp_db, force_db, mass_db ]
+udbs = [ dist_db, isp_db, force_db, mass_db, time_db ]
+
+engine_db = {
+    "BACC" : {
+        "model" : "BACC",
+        "name"  : "Thumper",
+        "rate" : (19.423, "su"), # Per second (found under Propellant)
+        "amount" : (820, "su"),
+        "ispsl" : (175, "s"), # Isp at sea level
+        "ispvac" : (210, "s")
+        },
+    "S2-17" : {
+        "model" : "S2-17",
+        "name" : "Thoroghbred",
+        "rate" : (100.494, "su"), # Per second (found under Propellant)
+        "amount" : (8000, "su"),
+        "ispsl" : (205, "s"), # Isp at sea level
+        "ispvac" : (230, "s")
+    },
+    "RT-5" : {
+        "model" : "RT-5",
+        "name" : "Flea",
+        "rate" : (15.821, "su"),
+        "amount" : (140, "su"),
+        "ispsl" : (140, "s"),
+        "ispvac" : (165, "s")
+    },
+    "RT-10" : {
+        "model" : "RT-10",
+        "name" : "Hammer",
+        "rate" : (15.827, "su"),
+        "amount" : (375, "su"),
+        "ispsl" : (170, "s"),
+        "ispvac" : (195, "s")        
+    }
+}
 
 
 template_craft = [
@@ -140,37 +191,436 @@ template_maneuvers = [
 ]
 
 
-def trajectory2D_solver( dmdt, alpha, isp, GM, R, y0, t0 ) :
+class Stage :
+    ''' 
+
+    @param engine_list: [ (N1, "Name of engine 1"), etc. ]
+    '''
+    
+    def __init__( self, m0=None, engine_list=[], dragco=0.0 ) :
+        self.m0 = m0
+        self.engine_list = engine_list
+        self.dragco = dragco
+
+        if m0 is not None :
+            self._assimilate( )
+
+    def _assimilate( self ) :
+        self._processEngines()
+        
+    def _processEngines( self ) :
+        '''Compute engine info'''
+
+        self.engines_by_t = []
+
+        for erec in self.engine_list :
+            n, ename = erec
+            engine = engine_db[ename]
+            
+            fuel, fuelu = engine["amount"]
+            fuel_kg = fuel * uconv( mass_db, fuelu, "kg" )
+
+            rate, rateu = engine["rate"]
+            rate_kgps = rate * uconv( mass_db, rateu, "kg" )
+
+            burn_time = fuel_kg / rate_kgps
+
+            self.engines_by_t.append( (burn_time, n, engine) )
+
+        self.engines_by_t.sort()
+        
+        self.engines_by_t.reverse()
+
+        self.mass_nodes = [0.0]
+        self.rate_edges = []
+        rate_total = 0.0
+        rate_rec = []
+
+        for irec, erec in enumerate(self.engines_by_t) :
+            t, n, e = erec
+            try :
+                tm1, x1, x2 = self.engines_by_t[irec+1]
+            except :
+                tm1 = 0.0
+            DT = t - tm1
+
+            rate, rateu = e["rate"]
+            rate_kg = rate * uconv( mass_db, rateu, "kg" )
+            rate = n*rate_kg
+            rate_total += rate
+
+            ispsl, ispslu = e["ispsl"]
+            ispsl_mps = ispsl * uconv( isp_db, ispslu, "m/s" )
+
+            ispvac, ispvacu = e["ispvac"]
+            ispvac_mps = ispvac * uconv( isp_db, ispvacu, "m/s" )
+
+            rate_rec.append( (rate, ispsl_mps, ispvac_mps) )
+
+            self.rate_edges.append( copy.copy(rate_rec) )
+            self.mass_nodes.append( self.mass_nodes[-1] + DT*rate_total )
+
+        self.engines_by_t.reverse()
+
+        m0, m0u = self.m0
+        m0_kg = m0 * uconv( mass_db, m0u, "kg" )
+        
+        self.m0_kg = m0_kg
+        self.me_kg = m0_kg - self.mass_nodes[-1]
+        
+    def dmdt( self, m_kg, throttle ) :
+        '''
+        @param m_kg: current mass of stage in kg
+        @param throttle: 0 - 1
+        @param vac: 0 - 1, 1 being vac and 0 being sea level
+        '''
+
+        mfuel_kg = m_kg - self.me_kg
+
+        if mfuel_kg < 1.0E-7 :
+            return 0.0
+
+        if mfuel_kg >= self.mass_nodes[-1] :
+            rec = self.rate_edges[-1]
+        else :
+            rec = None
+            for i in range(len(self.rate_edges)) :
+                if mfuel_kg >= self.mass_nodes[i] and mfuel_kg < self.mass_nodes[i+1] :
+                    rec = self.rate_edges[i]
+                    break
+
+        if rec is None :
+            return 0.0
+        else :
+            
+            r_tot = 0.0
+            for r, isl, iva in rec : # rate, Isp-SL Isp-Vac
+                r_tot += throttle*r
+
+            return -r_tot
+        
+        
+    def thrust( self, m_kg, throttle, vac ) :
+        '''
+        @param m_kg: current mass of stage
+        @param throttle: 0 - 1
+        @param vac: 0 - 1, 1 being vac and 0 being sea level
+        '''
+
+        mfuel_kg = m_kg - self.me_kg
+        
+        if mfuel_kg < 1.0E-7 :
+            return 0.0
+
+        if mfuel_kg >= self.mass_nodes[-1] :
+            rec = self.rate_edges[-1]
+        else :
+            rec = None
+            for i in range(len(self.rate_edges)) :
+                if mfuel_kg >= self.mass_nodes[i] and mfuel_kg < self.mass_nodes[i+1] :
+                    rec = self.rate_edges[i]
+                    break
+
+        if rec is None :
+            return 0.0
+        else :
+            
+            th = 0.0
+            for r, isl, iva in rec : # rate, Isp-SL Isp-Vac
+                th += throttle*r*((1.0-vac)*isl + vac*iva)
+                
+            return th
+
+    
+    def dumpInfo( self ) :
+
+        print()
+        
+        tabrows = [ [ "Initial mass (kg)", self.m0_kg ],
+                    [ "Empty mass (kg)", self.me_kg] ]
+        print(tabulate.tabulate(tabrows, headers=["Parameter", "Value"]))
+        print()
+        
+        tabrows = []
+        for t, n, engine in self.engines_by_t :
+            tabrows.append([t, n, engine["model"], engine["name"]])
+        print(tabulate.tabulate(tabrows, headers=["Burn Time (s)", "Count", "Model", "Name"]))
+        print()
+        
+        tabrows = []
+        for i in range(len(self.rate_edges)) :
+            tabrows.append( [ self.mass_nodes[i], self.mass_nodes[i+1], self.rate_edges[i] ] )
+        print(tabulate.tabulate(tabrows, headers=["M0", "M1", "Rate Record"]))
+        print()
+
+    def loadJSON( self, fname ) :
+        data = None
+        with open( fname, "rt" ) as f :
+            data = json.load( f )
+        self.m0 = data["m0"]
+        self.engine_list = data["elist"]
+        self.dragco = data["dragco"]
+        self._assimilate( )        
+        
+    def dumpJSON( self, fname ) :
+        data = { "m0" : self.m0,
+                 "elist" : self.engine_list,
+                 "dragco" : self.dragco
+                 }
+        with open( fname, "wt" ) as f :
+            json.dump( data, f )
+
+
+
+class FlyingStage :
+    '''A Stage in the context of a body which provides functions needed for 2D trajectory.
+
+    The main inputs are the throttle function and the orientation function
+
+    @param fthrottle = function( t, m, r, th, vr, om ) -> 0-1
+    @param falpha = function( t, m, r, th, vr, om, R ) -> angle relative to body normal, RHR applies
+    '''
+    def __init__( self, stage, body_name, fthrottle, falpha ) :
+        self.stage = stage
+        self.body_name  = body_name
+        self.fthrottle = fthrottle
+        self.falpha = falpha
+
+        self.body = bodies_db[ body_name ]
+        (self.GM, GMu) = self.body["GM"] # units of m3/s2
+
+        (R, Ru) = self.body["R"]
+        self.R = R*uconv(dist_db, Ru, "m")
+
+        self.fpress = self.body["fpress"]
+        self.fdens = self.body["fdens"]
+        self.p0 = self.fpress(0.0)
+
+        tday, tday_u = self.body["tday"]
+        tday_s = tday * uconv( time_db, tday_u, "s" )
+        self.body_omega = 2.0*math.pi / tday_s
+        
+    def _thrust( self, t, y ) :
+        m, r, th, vr, om = y
+        alt = r - self.R
+        p = self.fpress( alt )
+        vac_fac = (self.p0 - p)/self.p0
+        return self.stage.thrust( m, self.fthrottle(t, y), vac_fac )
+
+    def a_r( self, t, y ) :
+        m, r, th, vr, om = y
+        alt = r - self.R
+        
+        return ( ( self._thrust(t, y) * math.sin( self.falpha(t, y, self) ) / m )
+                 - self.GM/(r*r) - self.stage.dragco*abs(vr)*vr*self.fdens(alt)/m )
+
+    def a_th( self, t, y ) :
+        m, r, th, vr, om = y
+        vth = r*om
+        alt = r - self.R
+        return ( ( self._thrust(t, y) * math.cos( self.falpha(t, y, self) ) / m )
+                 - self.stage.dragco*abs(vth)*vth*self.fdens(alt)/m )
+    
+    def dmdt( self, t, y ) :
+        m, r, th, vr, om = y
+        return self.stage.dmdt( m, self.fthrottle(t, y) )
+
+
+    def dumpTraj( self ) :
+        for i, row in enumerate( self.soln ) :
+            t = self.solnt[i]
+            a = tuple([t] + row)
+            print("%10.2f %10.2f %10.2f %12.5e %10.2f %12.5e" % a )
+
+
+    def launch( self, y0 = None, sm1 = None, t0 = None ) :
+        '''Launch the solver.  The stage can be anywhere in space.
+
+        @param y0: intitial solver variables  ***OR***
+        @param sm1: previous FlyngStage object
+        @param t0: initial solver time.  Also, extracts the motion of the prvious stage if sm1 is set.
+        '''
+        
+        self.crashed = False
+
+        # Store the previous stage
+        self.sm1 = sm1
+
+        if y0 is not None and sm1 is not None :
+            raise Exception("Cannot set both y0 and sm1")
+        
+        if y0 is None and sm1 is None :
+            y0 = [ self.stage.m0_kg, self.R, 0.0, 0.0, self.body_omega ]
+        elif sm1 is not None :
+            if t0 is None :
+                raise Exception("Must set t0 for previous stage")
+            y0, crashed = sm1.flyTo( t0 )
+            if crashed :
+                raise Exception("Cannot stage after a crash")
+            # Replace m with M0 of this stage
+            y0[0] = self.stage.m0_kg
+
+        if t0 is None :
+            t0 = 0.0
+
+        dmdt  = lambda t, y : self.dmdt(t, y)
+        a_r   = lambda t, y : self.a_r(t, y)
+        a_th  = lambda t, y : self.a_th(t, y)
+        
+        self.solv = trajectory2D_solver( dmdt, a_r, a_th, y0, t0 )
+
+        self.solnt = [ t0 ]
+        self.soln = [ y0 ]
+        self.maxr = 0.0
+        
+    def flyTo( self, t ) :
+
+        if t < self.solnt[0] :
+            raise Exception("input time is before launch time")
+        
+        if t >= self.solnt[-1] :
+            if not self.crashed :
+                while self.solv.successful() and t >= self.solv.t:
+                    y = self.solv.integrate( self.solv.t + 0.1 )
+                    if y[1] <= self.R : ## y[1] := r
+                        self.crashed = True
+                        break
+                    else :
+                        self.maxr = max( y[1], self.maxr )
+                        self.solnt.append( self.solv.t )
+                        self.soln.append( list(y) )
+            if self.crashed :
+                print( "WARNING: FlyingStage is crashed at time %f" % t )
+                return ( copy.copy(self.soln[-1]), True )
+
+        # Interpolate
+        # Rationale: I reserve the right to use a variable time
+        # step interval in the future.
+        i = (bisect.bisect( self.solnt, t ) - 1)
+        t0 = self.solnt[i]
+        t1 = self.solnt[i+1]
+        a = (t - t0)/(t1 - t0)
+        y0 = self.soln[i]
+        y1 = self.soln[i+1]
+        y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
+        
+        return ( y, False )
+
+    
+    def plot( self ) :
+
+        import matplotlib
+        import matplotlib.pyplot as plt
+        
+        # Collect stages in reverse order
+        stages = []
+        this_stage = self
+        while True :
+            stages.append( this_stage )
+            this_stage = this_stage.sm1
+            if this_stage is None :
+                break
+
+        stages.reverse()
+
+        x = []
+        y = []
+            
+        for stage in stages :
+
+            for m, r, th, vr, om in stage.soln :
+                x.append( r * math.cos( th ) )
+                y.append( r * math.sin( th ) )
+
+        xb = [ min(x), max(x) ]
+        yb = [ min(y), max(y) ]
+
+        xrng = xb[1] - xb[0]
+        yrng = yb[1] - yb[0]
+
+        maxrng = max( xrng, yrng )
+
+        xpad = 0.5*(maxrng - xrng)
+        ypad = 0.5*(maxrng - yrng)
+
+        xmin = xb[0] - xpad
+        xmax = xb[1] + xpad
+        ymin = yb[0] - ypad
+        ymax = yb[1] + ypad
+
+        fig, ax = plt.subplots()
+        ax.set_xlim( xmin, xmax )
+        ax.set_ylim( ymin, ymax )
+        ax.set_aspect(1.0)
+        ax.plot(x, y)
+
+        Nth = 100
+        dth = 2.0*math.pi / float(Nth - 1)
+
+        x = []
+        y = []
+        for ith in range(Nth) :
+            th = dth * ith
+            x.append(self.R*math.cos(th))
+            y.append(self.R*math.sin(th))
+        ax.plot(x, y)
+
+        x = []
+        y = []
+        for ith in range(Nth) :
+            th = dth * ith
+            x.append((self.R+70E3)*math.cos(th))
+            y.append((self.R+70E3)*math.sin(th))
+        ax.plot(x, y)
+
+        plt.show()
+
+        
+def augmentBodyDbs( ) :
+    '''Looks for dictionary (JSON) file named <Body Key>.json and adds data to the dictionary'''
+    for body_key in bodies_db :
+        fname = os.path.join( KSPCALCDIR, "%s.json" % body_key )
+        exists = os.access( fname, os.F_OK )
+        if exists :
+            with open( fname, 'rt' ) as f :
+                extra_dat = json.load(f)
+                bodies_db[body_key].update( extra_dat )
+
+
+def processBodyDbs( ) :
+
+    for body_key in bodies_db :
+        bodyrec = bodies_db[body_key]
+        if "apt" in bodyrec :
+            alts, ps, ts = zip( *bodyrec["apt"] )
+
+            dens = [ AirMmass*p*1000.0/ts[i]/Rgas for i,p in enumerate(ps) ]
+
+            bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+            bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+    
+
+
+
+def trajectory2D_solver( dmdt, a_r, a_th, y0, t0 ) :
     '''Numerically integrates the planar orbit equations as a function of time.
     '''
-
+    # y := [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
     #
-    # Orbit equations expressed as first order ODE's
-    #
-    # dmdt:   function( t(s), m(kg), r(m), th(rad), vr(m/s), om(rad/s) ) -> kg/s
-    # alpha:  function( t, m, r, th, vr, om ) -> Radians from body normal
-    # isp:    function( t, m, r, th, vr, om ) -> m/s
-    # GM:     real(m^3/s^2)
-    # R:      real(m)
-    # y0:     [ m0(kg), r0(m), th0(radians), vr0(m/s), om0(rad/s) ]
-    # t0:     real(s)
+    # dmdt:   function( t, y ) -> ks/s
+    # a_r:    function( t, y ) -> acceleration along r axis
+    # a_th:   function( t, y ) -> acceleration along th axis
+    # y0:     initial conditions
+    # t0:     starting time (s)
 
-    def thrust(t, m, r, th, vr, om) :
-        return -dmdt(t, m, r, th, vr, om) * isp(t, m, r, th, vr, om) 
-    
-    def a_r(t, m, r, th, vr, om) :
-        return ( thrust(t, m, r, th, vr, om) * math.sin( alpha(t, m, r, th, vr, om) ) / m ) - GM/(r*r)
-
-    def a_th(t, m, r, th, vr, om) :
-        return ( thrust(t, m, r, th, vr, om) * math.cos( alpha(t, m, r, th, vr, om) ) / m ) 
-    
     def f(t, y) :
         m, r, th, vr, om = y
-        return [ dmdt(t, m, r, th, vr, om),    # dmdt 
+        return [ dmdt(t, y),                   # dmdt 
                  vr,                           # drdt
                  om,                           # dThdt
-                 a_r(t, m, r, th, vr, om) + r*om*om,       # dvrdt
-                 ( a_th(t, m, r, th, vr, om) - 2*vr*om ) / r   ] # domdt 
+                 a_r(t, y) + r*om*om,          # dvrdt
+                 ( a_th(t, y) - 2*vr*om ) / r  # domdt 
+        ]
 
     solv = ode( f ).set_integrator( "vode", method="adams" )
 
@@ -536,7 +986,7 @@ def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
     :param float Isp:  Units of seconds
     :param (m,"mu") Me: Mass (empty) after fuel is spent
     :param (x,"Xu") x: Mass Fuel (if solve_for=="thrust"), Thrust (if solve_for=="mfuel")
-    :param string solve_for: "thrust" (default) or "mass"
+    :param string solve_for: "thrust" (default) or "mfuel"
     :param float vf: speed at target altitude
     :param float Edrag: (J/kg) (g*Dh) Energy per mass lost due to drag.  Have to do an experiment to get it.
 
@@ -624,6 +1074,26 @@ def main() :
 
     Commands: g, craft, dvOrbit, orbitV
     '''
+    
+    augmentBodyDbs( )
+    processBodyDbs( )
+
+    if False :
+        import matplotlib
+        import matplotlib.pyplot as plt
+        matplotlib.use('TkAgg')
+
+        kerbin_dens = bodies_db["Kerbin"]["fdens"]
+        
+        y = []
+        for i in range(60000) :
+            y.append( kerbin_dens(i) )
+            
+        fig, ax = plt.subplots()
+        ax.plot(range(60000), y)
+        plt.show()
+
+    
     parser = argparse.ArgumentParser(description="KSP Calculator")
 
     subparsers = parser.add_subparsers(help="Commands", dest="command")
@@ -663,15 +1133,14 @@ def main() :
     cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
 
-    # Command "traj2d"
-    cmd_traj2d = subparsers.add_parser("traj2d", help="Test traj2d")
-    cmd_traj2d.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    # Command "stage"
+    cmd_stage = subparsers.add_parser("stage", help="Test stage")
 
     # Command "uconv"
     cmd_uconv = subparsers.add_parser("uconv", help="Call the units converter function")
     cmd_uconv.add_argument("vin", help="\"(value, 'unit')\"")
     cmd_uconv.add_argument("uout", help="Unit out")
-    
+
     args = parser.parse_args()
 
     if args.command == "craft" :
@@ -763,146 +1232,13 @@ def main() :
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
         
-    if args.command == "traj2d" :
-        print("Body: %s" % args.body)
+    if args.command == "stage" :
+        s2 = Stage((7.573,'t'), [(2,"RT-5"),(1,"RT-10")], .130)
+        s2.dumpJSON( "T2DS2ME_stage2.json" )
 
-        m0 = ( 20, "t" )
-        m0_kg = m0[0] * uconv( mass_db, m0[1], "kg" )
-
-        mf = ( 3, "t" )
-        mf_kg = mf[0] * uconv( mass_db, mf[1], "kg" )
-
-        max_burn_time = 100.0
-        dmdt_max = (mf_kg - m0_kg)/max_burn_time
-
-        # T0 = ( 100, "kN" )
-        # T0_N = T0[0] * uconv( force_db, T0[1], "N" )
-
-        Isp0 = ( 175, "s" )
-        Isp0_mps = Isp0[0] * uconv( isp_db, Isp0[1], "m/s" )
-
-        Ispf = ( 300, "s" )
-        Ispf_mps = Ispf[0] * uconv( isp_db, Ispf[1], "m/s" )
-
-        tt0 = 0.0
-        tt1 = 0.0
+        s1 = Stage((15.263,'t'), [(1,"BACC")], .130)
+        s1.dumpJSON( "T2DS2ME_stage1.json" )
         
-        def dmdt( t, m, r, th, vr, om ) :
-            global tt0
-            if m < mf_kg :
-                return 0.0
-
-            alt = r-R
-
-            if  t < 70 :
-                return dmdt_max
-            elif t > 175 and t < 220 :
-                return 0.5 * dmdt_max
-            elif th > 0.8*math.pi and th < 0.82*math.pi :
-                return 0.1*dmdt_max
-            else :
-                tt0 = 0.0
-                return 0.0
-
-        def alpha( t, m, r, th, vr, om ) :
-            
-            vth = r*om
-
-            if r < (R+7.5E3) :
-                return 0.5 * math.pi
-            
-            if vth == 0.0 :
-                a = 0.5 * math.pi
-            else :
-                a = math.atan( vr / vth )
-        
-            return a
-
-        def isp(  t, m, r, th, vr, om ) :
-
-            if r < (R+40.0E3) :
-                return Isp0_mps + (r - R)*(Ispf_mps - Isp0_mps)/40.0E3
-            else :
-                return Ispf_mps
-        
-        
-        body_rec = bodies_db[args.body]
-        (GM, GMu) = body_rec["GM"] # units of m3/s2
-
-        (R, Ru) = body_rec["R"]
-        R *= uconv(dist_db, Ru, "m")
-
-        # TODO TODO TODO TODO : NEED OMEGA OF BODY!!! : TODO TODO TODO TODO
-        om0 = 2.0*math.pi / ( 6.0 * 3600.0 )
-        y0 = [ m0_kg, R, 0.0, 0.0, om0 ]
-        t0 = 0.0
-        t1 = 10000.0
-        solv = trajectory2D_solver( dmdt, alpha, isp, GM, R, y0, t0 )
-
-        soln = [[t0] + y0 ]
-
-        th = 0.0
-        while solv.successful() and th < 4.0*math.pi and solv.t < 30000.0:
-             m, r, th, vr, om = solv.integrate( solv.t + 0.1 )
-             if r <= R :
-                 print("CRASH!")
-                 break
-             soln.append([solv.t, m, r, th, vr, om ])
-             outs = "%10.2f %10.2f %10.2f %12.5e %10.2f %12.5e" % (solv.t, m, r, th, vr, om)
-             print( outs )
-
-        if True :
-            import matplotlib.pyplot as plt
-
-            x = []
-            y = []
-            for t, m, r, th, vr, om in soln :
-                x.append( r * math.cos( th ) )
-                y.append( r * math.sin( th ) )
-
-            xb = [ min(x), max(x) ]
-            yb = [ min(y), max(y) ]
-
-            xrng = xb[1] - xb[0]
-            yrng = yb[1] - yb[0]
-            
-            maxrng = max( xrng, yrng )
-
-            xpad = 0.5*(maxrng - xrng)
-            ypad = 0.5*(maxrng - yrng)
-
-            xmin = xb[0] - xpad
-            xmax = xb[1] + xpad
-            ymin = yb[0] - ypad
-            ymax = yb[1] + ypad
-            
-            fig, ax = plt.subplots()
-            ax.set_xlim( xmin, xmax )
-            ax.set_ylim( ymin, ymax )
-            ax.set_aspect(1.0)
-            ax.plot(x, y)
-
-            Nth = 100
-            dth = 2.0*math.pi / float(Nth - 1)
-
-            x = []
-            y = []
-            for ith in range(Nth) :
-                th = dth * ith
-                x.append(R*math.cos(th))
-                y.append(R*math.sin(th))
-            ax.plot(x, y)
-
-            x = []
-            y = []
-            for ith in range(Nth) :
-                th = dth * ith
-                x.append((R+70E3)*math.cos(th))
-                y.append((R+70E3)*math.sin(th))
-            ax.plot(x, y)
-
-            plt.show()
-    
         
     if args.command == "uconv" :
         value, unit = eval( args.vin )
