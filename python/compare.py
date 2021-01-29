@@ -7,7 +7,14 @@ if cmp.fsame(a,b) :
 
 '''
 
-def fsame(a, b, tolfrac=1E-15, report_to = None) :
+import sys
+
+
+CMP_ONLY_NOT_SAME = 1
+CMP_ONLY_SAME = 2
+CMP_BOTH = 3
+
+def fsame(a, b, tolfrac=1E-15, report_to = sys.stderr, report = CMP_BOTH ) :
     '''Compare floats.  Returns true if within fractional tolerance.
 
     report_to is a file object
@@ -19,12 +26,12 @@ def fsame(a, b, tolfrac=1E-15, report_to = None) :
 
     if report_to is not None :
     
-        if same :
+        if same and report >= 2 :
 
             report_to.write("++++: %s and %s are within tolerance of %s\n" %
                             (a, b, tol) )
 
-        else :
+        elif not same and report >= 1 :
 
             report_to.write("----: %s and %s are outside tolerance of %s\n" %
                             (a, b, tol) )

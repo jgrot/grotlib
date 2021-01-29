@@ -416,10 +416,15 @@ class FlyingStage :
 
     def a_th( self, t, y ) :
         m, r, th, vr, om = y
+
+        # Body relative theta motion for drag.  R motion is the same.
+        omb = om - self.body_omega
+        vthb = r*omb
+        
         vth = r*om
         alt = r - self.R
         return ( ( self._thrust(t, y) * math.cos( self.falpha(t, y, self) ) / m )
-                 - self.stage.dragco*abs(vth)*vth*self.fdens(alt)/m )
+                 - self.stage.dragco*abs(vthb)*vthb*self.fdens(alt)/m )
     
     def dmdt( self, t, y ) :
         m, r, th, vr, om = y

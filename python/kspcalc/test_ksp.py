@@ -22,7 +22,7 @@ def compareSolutions( soln, soln_ref ) :
                 
         for jelem, elem in enumerate( row ) :
             elem_ref = row_ref[ jelem ]
-            if not cmp.fsame(elem, elem_ref, report_to = None) : exit(1)
+            if not cmp.fsame(elem, elem_ref, report_to = sys.stderr, report = cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
 
 def T2DS1ME( ) :
