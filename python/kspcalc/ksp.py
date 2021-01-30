@@ -1,10 +1,5 @@
 #! /usr/bin/env python
 
-# UNITS
-#
-# For now all functions should output MKS units
-#
-
 import argparse
 import bisect
 import copy
@@ -26,25 +21,27 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
 
 KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
 
-Rgas = 8.3145 # J/mol/K
-AirMmass = 28.84E-3 # kg/mol
-p0_Pa = 100174.2 # For Isp scaling
+#
+# Constants
+#
 
-angle_db = {
-    # Number of radians in angle unit
-    "radians" : 1.0,
-    "degrees" : math.pi / 180.0
-}
-    
+C_Rgas = 8.3145           # J/mol/K
+C_air_mol_mass = 28.84E-3 # kg/mol
+C_p0 = 100174.2           # Pa (ground pressure on Kerbin)
+
+#
+# Solar system data
+#
+
 bodies_db = {
     "Kerbin" : {
         "GM" : (3.53E12, "m3/s2"),
         "R"  : (600E3, "m"),
         "satellites" : {
-            "Mun"    : (11.4,"Mm"),
-            "Minmus" : (46.4,"Mm")
+            "Mun"    : (11.4, "Mm"),
+            "Minmus" : (46.4, "Mm")
         },
-        "tday" : ( 6, "h" ),
+        "tday" : (6.0, "h"),
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
@@ -56,28 +53,34 @@ bodies_db = {
     }
 }
 
+#
+# Databases for uconv()
+#
 
-force_db = {
-    "N" : 1.0,
-    "kN" : 1E3
+angle_db = {
+    # Number of radians in angle unit
+    "radians" : 1.0,
+    "degrees" : math.pi / 180.0
 }
-
-
-isp_db = {
-    # Number of s in ISP unit
-    "s" : 1.0, # KSP Isp units are seconds
-    "m/s" : 1.0/9.81
-}
-
-
+    
 dist_db = {
-    # number of meters in unit
+    # Number of meters in unit
     "m" : 1.0,
     "km" : 1E3,
     "Mm" : 1E6,
     "pc" : 3.0857E16 # Parsec
 }
 
+force_db = {
+    "N" : 1.0,
+    "kN" : 1E3
+}
+
+isp_db = {
+    # Number of s in ISP unit
+    "s" : 1.0, # KSP Isp units are seconds
+    "m/s" : 1.0/9.81
+}
 
 mass_db = {
     # Number of kgs in unit
@@ -86,52 +89,57 @@ mass_db = {
     "su" : 7.5
 }
 
-
 time_db = {
-    # number of seconds in unit
+    # Number of seconds in unit
     "s" : 1.0,
     "m" : 60.0,
     "h" : 3600.0
 }
 
-# Unit DB's
-udbs = [ dist_db, isp_db, force_db, mass_db, time_db ]
+udbs = [ angle_db, dist_db, force_db, isp_db, mass_db, time_db ]
+
+#
+# KSP Parts databases 
+#
 
 engine_db = {
     "BACC" : {
-        "model" : "BACC",
-        "name"  : "Thumper",
-        "rate" : (19.423, "su"), # Per second (found under Propellant)
+        "model"  : "BACC",
+        "name"   : "Thumper",
+        "rate"   : (19.423, "su"), # Per second (found under Propellant)
         "amount" : (820, "su"),
-        "ispsl" : (175, "s"), # Isp at sea level
-        "ispvac" : (210, "s")
-        },
+        "ispsl"  : (175, "s"), # Isp at sea level
+        "ispvac" : (210, "s")  # Isp at vacuum
+    },
     "S2-17" : {
-        "model" : "S2-17",
-        "name" : "Thoroghbred",
-        "rate" : (100.494, "su"), # Per second (found under Propellant)
+        "model"  : "S2-17",
+        "name"   : "Thoroghbred",
+        "rate"   : (100.494, "su"),
         "amount" : (8000, "su"),
-        "ispsl" : (205, "s"), # Isp at sea level
+        "ispsl"  : (205, "s"),
         "ispvac" : (230, "s")
     },
     "RT-5" : {
-        "model" : "RT-5",
-        "name" : "Flea",
-        "rate" : (15.821, "su"),
+        "model"  : "RT-5",
+        "name"   : "Flea",
+        "rate"   : (15.821, "su"),
         "amount" : (140, "su"),
-        "ispsl" : (140, "s"),
+        "ispsl"  : (140, "s"),
         "ispvac" : (165, "s")
     },
     "RT-10" : {
-        "model" : "RT-10",
-        "name" : "Hammer",
-        "rate" : (15.827, "su"),
+        "model"  : "RT-10",
+        "name"   : "Hammer",
+        "rate"   : (15.827, "su"),
         "amount" : (375, "su"),
-        "ispsl" : (170, "s"),
+        "ispsl"  : (170, "s"),
         "ispvac" : (195, "s")        
     }
 }
 
+#
+# Prototype code
+#
 
 template_craft = [
     ( "rocket", {
@@ -147,7 +155,6 @@ template_craft = [
     }
     )
 ]
-
 
 template_maneuvers = [
     {
@@ -191,188 +198,135 @@ template_maneuvers = [
     },
 ]
 
+#
+# Stage and FlyingStage classes used to model craft for
+# makePolarMotionSolver.
+#
 
 class Stage :
-    ''' 
+    '''Model of an isolated stage.
 
-    @param engine_list: [ (N1, "Name of engine 1"), etc. ]
+    :param float m0: mass of ready stage.  If None, assumes init via loadJSON().
+    :param list engines: [ (N1, "Name of engine 1"), etc. ]
+    :param float dragco: currently lumped term of 1/2*Cd*A
     '''
     
-    def __init__( self, m0=None, engine_list=[], dragco=0.0 ) :
+    def __init__( self, m0 = None, engines = [], dragco = 0.0 ) :
         self.m0 = m0
-        self.engine_list = engine_list
+        self.engines = engines
         self.dragco = dragco
 
         if m0 is not None :
             self._assimilate( )
 
     def _assimilate( self ) :
+        '''(private) Perform all pre-processing based on input parameters.
+
+        Call this function when top level input params change.
+        '''
         self._processEngines()
         
     def _processEngines( self ) :
-        '''Compute engine info'''
+        '''(private) Preprocess engine data.'''
 
-        self.engines_by_t = []
+        engines_by_t_burn = []
 
-        for erec in self.engine_list :
-            n, ename = erec
+        for eng_rec in self.engines :
+            
+            n_eng, ename = eng_rec
             engine = engine_db[ename]
             
-            fuel, fuelu = engine["amount"]
-            fuel_kg = fuel * uconv( mass_db, fuelu, "kg" )
+            mfuel, mfuelu = engine["amount"]
+            mfuel_kg = mfuel * uconv( mass_db, mfuelu, "kg" )
 
             rate, rateu = engine["rate"]
             rate_kgps = rate * uconv( mass_db, rateu, "kg" )
 
-            burn_time = fuel_kg / rate_kgps
+            t_burn = mfuel_kg / rate_kgps
 
-            self.engines_by_t.append( (burn_time, n, engine) )
+            engines_by_t_burn.append( (t_burn, n_eng, engine) )
 
-        self.engines_by_t.sort()
-        
-        self.engines_by_t.reverse()
+        engines_by_t_burn.sort()
+        engines_by_t_burn.reverse()
 
         self.mass_nodes = [0.0]
         self.rate_edges = []
-        rate_total = 0.0
+        rate_kgps_sum = 0.0
         rate_rec = []
 
-        for irec, erec in enumerate(self.engines_by_t) :
-            t, n, e = erec
+        #
+        #       |o M_full
+        #       | .
+        #       |  . dM/dt = rate_i : all engines running
+        #       |   .
+        # Mfuel |    o Mi
+        #       |    |   . dM/dt = rate0 : longest burning engines running
+        #       |    |       .
+        #       +----|-----------o M0-------------> time
+        #       |DTi |    DT0    |
+        #
+        #  Build a rate vs mass function using the notions in the plot above.
+        #
+        #  rate record: [ (<engine group max mass rate>, <engine group ASL Isp>, <engine group Vac Isp>), ... ]
+        for irec, eng_rec in enumerate(engines_by_t_burn) :
+            
+            t_burn, n_eng, engine = eng_rec
+            
+            # Note: engines list is sorted by *descending* burn time
             try :
-                tm1, x1, x2 = self.engines_by_t[irec+1]
+                t_burn_prev, x, x = engines_by_t_burn[irec+1]
             except :
-                tm1 = 0.0
-            DT = t - tm1
+                t_burn_prev = 0.0
+                
+            DT = t_burn - t_burn_prev # DTi in the plot
 
-            rate, rateu = e["rate"]
-            rate_kg = rate * uconv( mass_db, rateu, "kg" )
-            rate = n*rate_kg
-            rate_total += rate
+            rate, rateu = engine["rate"]
+            rate_kgps = n_eng * rate * uconv( mass_db, rateu, "kg" )
+            rate_kgps_sum += rate_kgps
 
-            ispsl, ispslu = e["ispsl"]
+            ispsl, ispslu = engine["ispsl"]
             ispsl_mps = ispsl * uconv( isp_db, ispslu, "m/s" )
 
-            ispvac, ispvacu = e["ispvac"]
+            ispvac, ispvacu = engine["ispvac"]
             ispvac_mps = ispvac * uconv( isp_db, ispvacu, "m/s" )
 
-            rate_rec.append( (rate, ispsl_mps, ispvac_mps) )
+            rate_rec.append( (rate_kgps, ispsl_mps, ispvac_mps) )
 
             self.rate_edges.append( copy.copy(rate_rec) )
-            self.mass_nodes.append( self.mass_nodes[-1] + DT*rate_total )
-
-        self.engines_by_t.reverse()
+            self.mass_nodes.append( self.mass_nodes[-1] + DT*rate_kgps_sum )
 
         m0, m0u = self.m0
         m0_kg = m0 * uconv( mass_db, m0u, "kg" )
         
         self.m0_kg = m0_kg
+        # Empty stage mass (kg)
         self.me_kg = m0_kg - self.mass_nodes[-1]
         
+    def dmdt( self, mstage_kg, throttle ) :
+        '''Compute stage dm/dt vs firing phase (via stage mass) and throttle level
+
+        :param float mstage_kg: mass of stage in kg
+        :param float throttle: 0 - 1
+        '''
+
+        # This might happen with roundoff error or solver overshoot.
+        if mstage_kg <= self.me_kg :
+            return 0.0
         
-    def dmdt( self, m_kg, throttle ) :
-        '''
-        @param m_kg: current mass of stage in kg
-        @param throttle: 0 - 1
-        '''
+        mfuel_kg = mstage_kg - self.me_kg
 
-        mfuel_kg = m_kg - self.me_kg
-
-        if mfuel_kg < 1.0E-7 :
-            return 0.0
-
-        if mfuel_kg >= self.mass_nodes[-1] :
-            rec = self.rate_edges[-1]
-        else :
-            rec = None
-            for i in range(len(self.rate_edges)) :
-                if mfuel_kg >= self.mass_nodes[i] and mfuel_kg < self.mass_nodes[i+1] :
-                    rec = self.rate_edges[i]
-                    break
-
-        if rec is None :
-            return 0.0
-        else :
+        # Find largest left-bracketing record
+        for i in reversed(range(len(self.rate_edges))) :
+            if mfuel_kg >= self.mass_nodes[i] :
+                rec = self.rate_edges[i]
+                break
             
-            r_tot = 0.0
-            for r, isl, iva in rec : # rate, Isp-SL Isp-Vac
-                r_tot += throttle*r
+        rate_kgps_sum = 0.0
+        for rate_kgps, isl, iva in rec : # rate, Isp-ASL, Isp-Vac
+            rate_kgps_sum += throttle * rate_kgps
 
-            return -r_tot
+        return -rate_kgps_sum
 
-        
-    def dvRemain( self, m_kg, p_Pa ) :
-        ### See rocket book note "RB 2021-01-30 04.15.00.pdf"
-        vac = (p0_Pa - p_Pa) / p0_Pa
-
-        if m_kg <= self.me_kg :
-            return 0.0
-        
-        # Mass of vehicle (at fuel mass nodes)
-        M = [ self.me_kg + m for m in self.mass_nodes ]
-        # One for each mass node
-        DV = [0.0]
-        
-        for i in range(1,len(M)) :
-            
-            rate_rec = self.rate_edges[i-1]
-
-            sr = 0.0
-            st = 0.0
-
-            for r, isl, iva in rate_rec :
-                isp = (1.0 - vac)*isl + vac*iva
-                sr += r
-                st += (r*isp)
-
-            isp_eqv = st / sr
-
-            dv = isp_eqv * math.log( M[i] / M[i-1] )
-            DV.append( dv+DV[i-1] )
-
-            if m_kg >= M[i-1] and m_kg <= M[i] :
-                a = ( m_kg - M[i-1] ) / ( M[i] - M[i-1] )
-                return DV[i-1]*(1.0-a) + DV[i]*a
-
-        # If we get here then it probably means this is a later
-        # (ligther) stage being queried for its DV
-        return DV[-1]
-
-        
-    def thrust( self, m_kg, throttle, p_Pa ) :
-        '''
-        @param m_kg: current mass of stage
-        @param throttle: 0 - 1
-        @param p_Pa: ambient pressure in Pa
-        '''
-        
-        vac = (p0_Pa - p_Pa) / p0_Pa
-        
-        mfuel_kg = m_kg - self.me_kg
-        
-        if mfuel_kg < 1.0E-7 :
-            return 0.0
-
-        if mfuel_kg >= self.mass_nodes[-1] :
-            rec = self.rate_edges[-1]
-        else :
-            rec = None
-            for i in range(len(self.rate_edges)) :
-                if mfuel_kg >= self.mass_nodes[i] and mfuel_kg < self.mass_nodes[i+1] :
-                    rec = self.rate_edges[i]
-                    break
-
-        if rec is None :
-            return 0.0
-        else :
-            
-            th = 0.0
-            for r, isl, iva in rec : # rate, Isp-SL Isp-Vac
-                th += throttle*r*((1.0-vac)*isl + vac*iva)
-                
-            return th
-
-    
     def dumpInfo( self ) :
 
         print()
@@ -382,46 +336,121 @@ class Stage :
         print(tabulate.tabulate(tabrows, headers=["Parameter", "Value"]))
         print()
         
-        tabrows = []
-        for t, n, engine in self.engines_by_t :
-            tabrows.append([t, n, engine["model"], engine["name"]])
-        print(tabulate.tabulate(tabrows, headers=["Burn Time (s)", "Count", "Model", "Name"]))
-        print()
-        
-        tabrows = []
+        tabrows = [[self.mass_nodes[0], None]]
         for i in range(len(self.rate_edges)) :
-            tabrows.append( [ self.mass_nodes[i], self.mass_nodes[i+1], self.rate_edges[i] ] )
-        print(tabulate.tabulate(tabrows, headers=["M0", "M1", "Rate Record"]))
+            tabrows.append( [ None, self.rate_edges[i] ] )
+            tabrows.append( [ self.mass_nodes[i+1], None ] )
+        print(tabulate.tabulate(tabrows, headers=["Stage Mass", "Rate Record"]))
         print()
 
+    def dvRemain( self, mstage_kg, p_Pa ) :
+        '''Compute remaining Delta-V given firing phase (via stage mass) and ambient pressure.
+
+        :param float mstage_kg: Stage mass in kg
+        :param float p_pA: ambient pressure in Pascals
+        '''
+        ### See rocket book note "RB 2021-01-30 04.15.00.pdf"
+
+        if mstage_kg <= self.me_kg :
+            return 0.0
+        
+        vac = (C_p0 - p_Pa) / C_p0
+
+        # Mass of vehicle (at fuel mass nodes)
+        MSTAGE = [ self.me_kg + m for m in self.mass_nodes ]
+        # One for each mass node
+        DV = [0.0]
+        
+        for i in range(1, len(MSTAGE)) :
+            
+            rate_rec = self.rate_edges[i-1]
+
+            sum_rate_kgps = 0.0
+            sum_thrust = 0.0
+
+            for rate_kgps, isl, iva in rate_rec :
+                isp = (1.0 - vac)*isl + vac*iva
+                sum_rate_kgps += rate_kgps
+                sum_thrust += (rate_kgps * isp)
+
+            isp_eqv = sum_thrust / sum_rate_kgps
+
+            dv_phase = isp_eqv * math.log( MSTAGE[i] / MSTAGE[i-1] )
+            
+            DV.append( dv_phase + DV[i-1] )
+
+            # If input stage mass falls within the current firing
+            # phase, then interpolate the answer and we're done.
+            if mstage_kg >= MSTAGE[i-1] and mstage_kg <= MSTAGE[i] :
+                a = ( mstage_kg - MSTAGE[i-1] ) / ( MSTAGE[i] - MSTAGE[i-1] )
+                return DV[i-1]*(1.0-a) + DV[i]*a
+
+        # If we get here then it probably means this is a later
+        # (ligther) stage being queried for its available DV.
+        return DV[-1]
+
+    def thrust( self, mstage_kg, throttle, p_Pa ) :
+        '''Thrust of stage given firing phase (via stage mass), throttle, and ambient pressure.
+
+        :param float mstage_kg: Stage mass in kg
+        :param float throttle: 0 - 1
+        :param float p_Pa: ambient pressure in Pascals
+        '''
+        
+        if mstage_kg < self.me_kg :
+            return 0.0
+
+        vac = (C_p0 - p_Pa) / C_p0
+        
+        mfuel_kg = mstage_kg - self.me_kg
+
+        # Find largest left-bracketing record
+        for i in reversed(range(len(self.rate_edges))) :
+            if mfuel_kg >= self.mass_nodes[i] :
+                rec = self.rate_edges[i]
+                break
+        
+        thrust = 0.0
+        for rate_kgps, isl, iva in rec : # rate, Isp-ASL Isp-Vac
+            thrust += throttle * rate_kgps * ((1.0-vac)*isl + vac*iva)
+                
+        return thrust
+    
     def loadJSON( self, fname ) :
-        data = None
+        '''Load initial parameters from a JSON file and pre-process.
+        '''
+
         with open( fname, "rt" ) as f :
             data = json.load( f )
-        self.m0 = data["m0"]
-        self.engine_list = data["elist"]
-        self.dragco = data["dragco"]
-        self._assimilate( )        
+            self.m0 = data["m0"]
+            self.engines = data["elist"]
+            self.dragco = data["dragco"]
+            self._assimilate( )        
         
     def dumpJSON( self, fname ) :
+        '''Save initial parameters to a JSON file.
+        '''
+        
         data = { "m0" : self.m0,
-                 "elist" : self.engine_list,
+                 "elist" : self.engines,
                  "dragco" : self.dragco
                  }
+        
         with open( fname, "wt" ) as f :
             json.dump( data, f )
 
-
-
 class FlyingStage :
-    '''A Stage in the context of a body which provides functions needed for 2D trajectory.
+    '''A Stage in the context of a body which provides functions needed for plane-polar trajectory.
 
-    The main inputs are the throttle function and the orientation function
+    The main inputs are the throttle function and the orientation function.
 
-    @param fthrottle = function( t, y ) -> 0-1
-    @param falpha = function( t, y, FlyingStage ) -> angle relative to body normal, RHR applies
+    :param Stage stage: A Stage object
+    :param string stage_name: Arbitrary name for flying stage
+    :param string body_name: name of solar system body about which stage is flying
+    :param function fthrottle: function( t, y ) -> 0-1
+    :param function falpha: function( t, y, FlyingStage ) -> angle relative to body normal, RHR applies
     '''
-    def __init__( self, stage, stage_name,  body_name, fthrottle, falpha ) :
+    def __init__( self, stage, stage_name, body_name, fthrottle, falpha ) :
         self.stage = stage
         self.stage_name = stage_name
         self.body_name  = body_name
@@ -439,24 +468,30 @@ class FlyingStage :
         self.fpress = self.body["fpress"]
         self.fdens = self.body["fdens"]
 
+        # Body rotational period
         tday, tday_u = self.body["tday"]
         tday_s = tday * uconv( time_db, tday_u, "s" )
         self.body_omega = 2.0*math.pi / tday_s
         
-    def _thrust( self, t, y ) :
-        m, r, th, vr, om = y
-        alt = r - self.R
-        p = self.fpress( alt )
-        return self.stage.thrust( m, self.fthrottle(t, y), p )
+    def _a_r( self, t, y ) :
+        '''(private) Compute radial component of acceleration
 
-    def a_r( self, t, y ) :
+        :param float t: trajectory time
+        :param list y: solver dependent values array (See makePolarMotionSolver)
+        '''
         m, r, th, vr, om = y
         alt = r - self.R
         
         return ( ( self._thrust(t, y) * math.sin( self.falpha(t, y, self) ) / m )
                  - self.GM/(r*r) - self.stage.dragco*abs(vr)*vr*self.fdens(alt)/m )
 
-    def a_th( self, t, y ) :
+    def _a_th( self, t, y ) :
+        '''(private) Compute polar component of acceleration
+
+        :param float t: trajectory time
+        :param list y: solver dependent values array (See makePolarMotionSolver)
+        '''
+        
         m, r, th, vr, om = y
 
         # Body relative theta motion for drag.  R motion is the same.
@@ -468,12 +503,40 @@ class FlyingStage :
         return ( ( self._thrust(t, y) * math.cos( self.falpha(t, y, self) ) / m )
                  - self.stage.dragco*abs(vthb)*vthb*self.fdens(alt)/m )
     
-    def dmdt( self, t, y ) :
+    def _dmdt( self, t, y ) :
+        '''(private) Compute dmdt
+
+        :param float t: trajectory time
+        :param list y: solver dependent values array (See makePolarMotionSolver)
+        '''
+        
         m, r, th, vr, om = y
         return self.stage.dmdt( m, self.fthrottle(t, y) )
 
+    def _thrust( self, t, y ) :
+        '''(private) Compute thrust at a trajectory point
+
+        :param float t: trajectory time
+        :param list y: solver dependent values array (See makePolarMotionSolver)
+        '''
+        
+        m, r, th, vr, om = y
+        alt = r - self.R
+        p = self.fpress( alt )
+        return self.stage.thrust( m, self.fthrottle(t, y), p )
 
     def dumpTraj( self, t0 = None, t1 = None, dt = 5.0 ) :
+        '''Dump trajectory information.  Calls flyTo() and so takes into account the entire craft.
+
+        :param float t0: time to start trajectory dump.  If None, will
+                         start with the stage for which it is called.
+        :param float t1: time to end trajectory dump.  If None, will
+                         end with the last time stamp of the current
+                         stage.
+        :param float dt: time interval between dumped trajectory
+                         points.  Default is 5.0 seconds.
+
+        '''
 
         if t0 is None :
             t0 = self.solnt[0]
@@ -485,18 +548,9 @@ class FlyingStage :
 
         rowdat = []
 
-        flyer_last = None
-        DV_last = 0.0
-        DV = 0.0
-        
         while t <= t1 :
-            Y, crashed, flyer = self.flyTo( t )
-
-            if flyer != flyer_last :
-                flyer_last = flyer
-                DV_last += DV
-                print("DVLAST IS ", DV_last)
             
+            Y, crashed, flyer = self.flyTo( t )
             m, r, th, vr, om = Y
 
             om_gnd = om - flyer.body_omega
@@ -505,10 +559,9 @@ class FlyingStage :
             x = ( r * math.cos( th ) )
             y = ( r * math.sin( th ) )
 
-            dvremain = flyer.dvRemain( m, p0_Pa )
-            print("DEBUG FLYER PRESSURE ", flyer.fpress(r - flyer.R))
-            act_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
-            sdvremain = flyer.stage.dvRemain( m, p0_Pa )
+            craft_asl_dvremain = flyer.dvRemain( m, C_p0 )
+            craft_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
+            stage_dvremain = flyer.stage.dvRemain( m, C_p0 )
 
             vom_gnd = r*om_gnd
             spd_gnd = math.sqrt( vr*vr + vom_gnd*vom_gnd )
@@ -516,77 +569,46 @@ class FlyingStage :
             vom = r*om
             spd = math.sqrt( vr*vr + vom*vom )
             
-            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd, sdvremain, dvremain, act_dvremain, spd_gnd, spd ]
+            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd,
+                    stage_dvremain, craft_asl_dvremain, craft_dvremain, spd_gnd, spd ]
 
             rowdat.append(row)
 
             t += dt
 
-        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega", "rel omega", "Stage DV (SL)", "Craft DV (SL)", "Craft DV", "Ground speed", "Orbit Speed" ]
+        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega",
+                    "rel omega", "Stage DV (ASL)", "Craft DV (ASL)",
+                    "Craft DV", "Ground speed", "Orbit Speed" ]
+        
         print( tabulate.tabulate( rowdat, headers = headers) )
 
+    def dvRemain( self, mcraft_kg, p_Pa ) :
+        '''Compute remaining Delta-V given firing phase (via craft mass) and ambient pressure.
+
+        :param float mcraft_kg: Stage mass in kg
+        :param float p_pA: ambient pressure in Pascals
+        '''
         
-    def dvRemain( self, m_kg, p_Pa ) :
-        
-        mydv = self.stage.dvRemain( m_kg, p_Pa )
+        mydv = self.stage.dvRemain( mcraft_kg, p_Pa )
 
         if self.sp1 is not None :
-            return mydv + self.sp1.dvRemain( m_kg, p_Pa )
+            return mydv + self.sp1.dvRemain( mcraft_kg, p_Pa )
         else :
-            return mydv
-        
-
-    def launch( self, y0 = None, sm1 = None, t0 = None ) :
-        '''Launch the solver.  The stage can be anywhere in space.
-
-        @param y0: intitial solver variables  ***OR***
-        @param sm1: previous FlyngStage object
-        @param t0: initial solver time.  Also, extracts the motion of the prvious stage if sm1 is set.
-        '''
-        
-        self.crashed = False
-
-        # Link the stages
-        self.sm1 = sm1
-        if sm1 is not None :
-            sm1.sp1 = self
-
-        if y0 is not None and sm1 is not None :
-            raise Exception("Cannot set both y0 and sm1")
-        
-        if y0 is None and sm1 is None :
-            y0 = [ self.stage.m0_kg, self.R, 0.0, 0.0, self.body_omega ]
-        elif sm1 is not None :
-            if t0 is None :
-                raise Exception("Must set t0 for previous stage")
-            y0, crashed, flyer = sm1.flyTo( t0 )
-            if crashed :
-                raise Exception("Cannot stage after a crash")
-            # Replace m with M0 of this stage
-            y0[0] = self.stage.m0_kg
-
-        if t0 is None :
-            t0 = 0.0
-
-        dmdt  = lambda t, y : self.dmdt(t, y)
-        a_r   = lambda t, y : self.a_r(t, y)
-        a_th  = lambda t, y : self.a_th(t, y)
-        
-        self.solv = trajectory2D_solver( dmdt, a_r, a_th, y0, t0 )
-
-        self.solnt = [ t0 ]
-        self.soln = [ y0 ]
-        self.maxr = 0.0
-        
+            return mydv        
 
     def flyTo( self, t ) :
-        '''Advance and / or sample a trajectory.  Will sample from earlier
-        stages if they exist.
+        '''Advance and / or sample a trajectory.  Will sample from earlier stages if they exist.
 
-        Returns: ( y(t), <Bool: crashed at t>, FlyingStage at t ) 
+        :param float t: trajectory time.
 
+        :returns: ( y(t), <Bool: crashed at t>, FlyingStage at t )
         '''
 
+        # Currently a fixed ODE time interval.  Needs more research as
+        # to what the ODE solvers are doing with time stepping, but a
+        # larger value of dt will give less accurate results.
+        dt = 0.1
+        
         if t < self.solnt[0] :
             if self.sm1 is not None :
                 return self.sm1.flyTo( t )
@@ -596,7 +618,7 @@ class FlyingStage :
         if t >= self.solnt[-1] :
             if not self.crashed :
                 while self.solv.successful() and t >= self.solv.t:
-                    y = self.solv.integrate( self.solv.t + 0.1 )
+                    y = self.solv.integrate( self.solv.t + dt )
                     if y[1] <= self.R : ## y[1] := r
                         self.crashed = True
                         break
@@ -612,8 +634,61 @@ class FlyingStage :
         
         return ( y, False, self )
 
-    
+    def launch( self, y0 = None, sm1 = None, t0 = None ) :
+        '''Launch the stage.  The stage can be anywhere in space.  Can add a previous FlyingStage at this point.
+
+        :param list y0: (optional) intitial makePolarMotionSolver variables, defaults to ground launch, *** OR ***
+        :param FlyingStage sm1: (optional) previous FlyngStage object
+        :param float t0: (required if sm1 is set) initial solver time, defaults to zero.
+        '''
+        
+        self.crashed = False
+
+        # Link stages
+        self.sm1 = sm1
+        if sm1 is not None :
+            sm1.sp1 = self
+
+        if y0 is not None and sm1 is not None :
+            raise Exception("Cannot set both y0 and sm1")
+        
+        if y0 is None and sm1 is None :
+            # When nothing is specified, stage is launched from ground.
+            y0 = [ self.stage.m0_kg, self.R, 0.0, 0.0, self.body_omega ]
+
+        elif sm1 is not None :
+            if t0 is None :
+                raise Exception("Must set t0 for previous stage")
+            y0, crashed, flyer = sm1.flyTo( t0 )
+            if crashed :
+                raise Exception("Cannot stage after a crash")
+            # Replace m with M0 of this stage
+            y0[0] = self.stage.m0_kg
+
+        if t0 is None :
+            t0 = 0.0
+
+        dmdt  = lambda t, y : self._dmdt(t, y)
+        a_r   = lambda t, y : self._a_r(t, y)
+        a_th  = lambda t, y : self._a_th(t, y)
+        
+        self.solv = makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 )
+
+        self.solnt = [ t0 ]
+        self.soln = [ y0 ]
+        self.maxr = 0.0
+        
     def plot( self, t0 = None, t1 = None, dt = 5.0 ) :
+        ''' Plots a trajectory.
+
+        :param float t0: time to start trajectory dump.  If None, will
+                         start with the stage for which it is called.
+        :param float t1: time to end trajectory dump.  If None, will
+                         end with the last time stamp of the current
+                         stage.
+        :param float dt: time interval between dumped trajectory
+                         points.  Default is 5.0 seconds.
+        '''
 
         import matplotlib
         import matplotlib.pyplot as plt
@@ -679,9 +754,9 @@ class FlyingStage :
 
         plt.show()
 
-        
 def augmentBodyDbs( ) :
-    '''Looks for dictionary (JSON) file named <Body Key>.json and adds data to the dictionary'''
+    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
+    
     for body_key in bodies_db :
         fname = os.path.join( KSPCALCDIR, "%s.json" % body_key )
         exists = os.access( fname, os.F_OK )
@@ -690,27 +765,31 @@ def augmentBodyDbs( ) :
                 extra_dat = json.load(f)
                 bodies_db[body_key].update( extra_dat )
 
-
 def processBodyDbs( ) :
-
+    '''Pre-processes bodies_db data.
+    '''
+    
     for body_key in bodies_db :
         bodyrec = bodies_db[body_key]
         if "apt" in bodyrec :
             alts, ps, ts = zip( *bodyrec["apt"] )
 
-            dens = [ AirMmass*p/ts[i]/Rgas for i,p in enumerate(ps) ]
+            dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
 
             bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
             bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
 
-
 def interp2Dtraj( t, solnt, soln ) :
-    '''
-    @param soln: array of trajectory2D_solver y 
+    '''Utility function for makePolarMotionSolver.
+    
+    :param float t: query time of point along trajectory
+    :param list solnt: array of times corresponding to each element of soln.
+    :param list soln: array of makePolarMotionSolver y.
+
+    :Rationale: bisect is used in case a non-uniform time interval is used.
+    :TODO: consider using the scipy interpolator.
     '''
     
-    # Rationale: I reserve the right to use a variable time
-    # step interval in the future.
     i = (bisect.bisect( solnt, t ) - 1)
     t0 = solnt[i]
     t1 = solnt[i+1]
@@ -721,16 +800,21 @@ def interp2Dtraj( t, solnt, soln ) :
     
     return y
 
-def trajectory2D_solver( dmdt, a_r, a_th, y0, t0 ) :
-    '''Numerically integrates the planar orbit equations as a function of time.
+def makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 ) :
+    '''Creates an ODE solver that numerically integrates the planar orbit equations as a function of time.
+    
+    Dependent variable list:
+
+        y := [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
+
+    :param function dmdt: function( t, y ) -> ks/s
+    :param function a_r:  function( t, y ) -> acceleration along r axis
+    :param function a_th: function( t, y ) -> acceleration along th axis
+    :param list y0:       initial conditions
+    :param float t0:      starting time (s)
+
+    :returns: scipy.integrate.ode object.
     '''
-    # y := [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
-    #
-    # dmdt:   function( t, y ) -> ks/s
-    # a_r:    function( t, y ) -> acceleration along r axis
-    # a_th:   function( t, y ) -> acceleration along th axis
-    # y0:     initial conditions
-    # t0:     starting time (s)
 
     def f(t, y) :
         m, r, th, vr, om = y
@@ -747,9 +831,8 @@ def trajectory2D_solver( dmdt, a_r, a_th, y0, t0 ) :
 
     return solv
 
-
 def analyzeRocket(rocket_def) :
-    '''Analyze a rocket DV specified in a JSON file
+    '''Analyze a rocket DV specified in a JSON file.
 
     Takes into account gravity when computing the DV for the first stage.
 
@@ -817,10 +900,11 @@ def analyzeRocket(rocket_def) :
         dvtot += dv_final
 
         print("DV Total:", dvtot)
-
             
 def dInterp(term, dunit="m") :
-    '''General distance interpreter.  Allowed terms are:
+    '''General distance interpreter.
+
+    Allowed terms are:
 
     1. Regular value, units list or tuple pair
     2. String: D('body1', 'body2')
@@ -873,9 +957,12 @@ def dInterp(term, dunit="m") :
         d *= uconv(dist_db, du, dunit)
         return d
 
-
 def dInterpDist(term, dunit="m") :
-    '''Operates on a string "D('body1', 'body2')"
+    '''Interprets a distance expression "D('body1', 'body2')"
+
+    :param string dunit: destination unit
+
+    :returns: float distance in units of dunit
     '''
     
     if term[0] != "D" :
@@ -898,8 +985,11 @@ def dInterpDist(term, dunit="m") :
 
     return d
 
-
 def dInterpRadius(term, dunit="m") :
+    '''Interprets a body radius expression "R('body')"
+
+    :returns: float radius in units of dunit
+    '''
 
     if term[0] != "R" :
         raise Exception("Not a radius term")
@@ -914,9 +1004,13 @@ def dInterpRadius(term, dunit="m") :
 
     return R
 
-
 def dvHohmannApo(body, r_peri, r_apo) :
     '''DV computed when thrusting a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
+
+    :param (d,"du") r_peri: periapsis
+    :param (d,"du") r_apo:  apoapsis
+
+    :returns: float Delta-V for maneuver
     '''
     
     body_rec = bodies_db[body]
@@ -936,9 +1030,13 @@ def dvHohmannApo(body, r_peri, r_apo) :
 
     return A*B
     
-
 def dvHohmannPeri(body, r_peri, r_apo) :
     '''DV computed when thrusting a) prograde at peri to obtain elliptical orbit, or b) retrograde at peri to obtain circular orbit.
+
+    :param (d,"du") r_peri: periapsis
+    :param (d,"du") r_apo:  apoapsis
+
+    :returns: float Delta-V for maneuver
     '''
     
     body_rec = bodies_db[body]
@@ -957,7 +1055,6 @@ def dvHohmannPeri(body, r_peri, r_apo) :
     B = math.sqrt(2.0*(rapo + R)/(rperi + rapo + 2.0*R)) - 1.0
 
     return A*B
-    
 
 def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
@@ -1011,8 +1108,9 @@ def dvInterp(maneuvers) :
     
     return dv_tot
 
-
 def dvOrbit(body, alt) :
+    '''(Experimental) Compute DV to reach circular orbit about a body from launch.
+    '''
     
     try :
         alt, altu = alt
@@ -1034,12 +1132,11 @@ def dvOrbit(body, alt) :
 
     return dvOrbit
 
-
 def dvTurn(speed_xpr, theta) :
-    '''Computes an on DV needed for a particular turn.
+    '''Computes DV needed for orbit inclination change
 
-    :param speed_xpr float_or_python_expr: orbital speed of craft
-    :param theta (ang, 'u_ang'): turn angle
+    :param float_or_python_expr speed_xpr: orbital speed of craft
+    :param (ang,'u_ang') theta: turn angle
     '''
 
     if isinstance(speed_xpr, float) or isinstance(speed_xpr, int) :
@@ -1052,14 +1149,13 @@ def dvTurn(speed_xpr, theta) :
 
     return speed * theta
 
-
 def g(body, alt) :
-    '''Computes acceleration due to gravity (in m/s^2) near body "body" at altitude "alt"
+    '''Computes acceleration due to gravity near body "body" at altitude "alt"
 
-    body: name of body
-    alt: tuple, (value, "units")
+    :param string body: name of body
+    :param (d,"du"() alt: altitude
 
-    TODO: full blown unit conversion
+    :returns: acceleration of gravity (m/s^2)
     '''
 
     try :
@@ -1082,14 +1178,12 @@ def g(body, alt) :
 
     return g
 
-
 def listOfBodyNames(sep = " | ") :
     body_names = bodies_db.keys()
     return sep.join(body_names)
 
-
 def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
-    '''Compute fuel or thrust needed for a first stage to reach a certain
+    '''(Experimental) Compute fuel or thrust needed for a first stage to reach a certain
        altitude
 
     Solves for fuel mass or thrust in the equation below, such that
@@ -1119,7 +1213,6 @@ def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
     Me, Meu = Me
     Me *= uconv(mass_db, Meu, "kg")
     
-
     if solve_for == "thrust":
         # Easier to solve for inv thrust
         
@@ -1157,8 +1250,14 @@ def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
     else :
         raise Exception("Bad value for solve_for")
 
-
 def orbitV(body, alt) :
+    '''Computes speed of circular orbit.
+
+    :param string body: name of body about which to orbit
+    :param (d,"du") alt: altitude
+
+    :returns: float orbit speed (m/s)
+    '''
     
     try :
         alt, altu = alt
@@ -1179,19 +1278,19 @@ def orbitV(body, alt) :
 
     return math.sqrt(GM/r)
 
-
 def uconv(db, ufrom, uto) :
-    '''Computes multiplication factor to convert value of units
-    "ufrom" to value of units "uto"
+    '''Computes multiplication factor to convert value of units "ufrom" to value of units "uto"
 
+    :param string db: name of units db
+    :param string ufrom: units converting from
+    :param string uto: units converting to
+
+    :returns: float conversion factor
     '''
     return db[ufrom] / db[uto]
 
-
 def main() :
     '''Command Line Interface
-
-    Commands: g, craft, dvOrbit, orbitV
     '''
     
     augmentBodyDbs( )

@@ -36,6 +36,7 @@ def T2DS1ME( ) :
 
     stage_1 = ksp.Stage()
     stage_1.loadJSON(tname + "_stage1.json")
+    stage_1.dumpInfo( )
 
     def fthrottle( t, y ) :
         return 1.0
@@ -78,9 +79,11 @@ def T2DS2ME( ) :
 
     stage_1 = ksp.Stage()
     stage_1.loadJSON(tname + "_stage1.json")
+    stage_1.dumpInfo( )
 
     stage_2 = ksp.Stage()
     stage_2.loadJSON(tname + "_stage2.json")
+    stage_2.dumpInfo( )
     
     def fthrottle( t, y ) :
         return 1.0
@@ -102,12 +105,24 @@ def T2DS2ME( ) :
     fly_s2 = ksp.FlyingStage( stage_2, "Stage 2",  "Kerbin", fthrottle, falpha )
     fly_s2.launch( sm1 = fly_s1, t0 = 85.40 )
     fly_s2.flyTo( 30000 )
+
+    t = 0.0
+    DV = []
+    while t <= fly_s2.solnt[-1] :
+        Y, crashed, flyer = fly_s2.flyTo( t )
+        m, r, th, vr, om = Y
+        craft_asl_dvremain = flyer.dvRemain( m, ksp.C_p0 )
+        craft_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
+        stage_asl_dvremain = flyer.stage.dvRemain( m, ksp.C_p0 )
+        DV.append( (craft_asl_dvremain, craft_dvremain, stage_asl_dvremain) )
+        t += 10
     
     if do_generate :
         with open( tfile, 'wb' ) as f :
             data = {
                 "stage1" : fly_s1.soln,
-                "stage2" : fly_s2.soln
+                "stage2" : fly_s2.soln,
+                "DV"     : DV
             }
             pickle.dump( data, f )
     else :
@@ -115,6 +130,7 @@ def T2DS2ME( ) :
             soln_compare = pickle.load( f )
             compareSolutions( fly_s1.soln, soln_compare["stage1"] )
             compareSolutions( fly_s2.soln, soln_compare["stage2"] )
+            compareSolutions( DV, soln_compare["DV"] )
         print("SUCCESS")
             
     # fly_s2.plot( t0 = 0.0, dt = 10.0 )
