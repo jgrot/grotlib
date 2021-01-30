@@ -506,6 +506,8 @@ class FlyingStage :
             y = ( r * math.sin( th ) )
 
             dvremain = flyer.dvRemain( m, p0_Pa )
+            print("DEBUG FLYER PRESSURE ", flyer.fpress(r - flyer.R))
+            act_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
             sdvremain = flyer.stage.dvRemain( m, p0_Pa )
 
             vom_gnd = r*om_gnd
@@ -514,13 +516,13 @@ class FlyingStage :
             vom = r*om
             spd = math.sqrt( vr*vr + vom*vom )
             
-            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd, sdvremain, dvremain, spd_gnd, spd ]
+            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd, sdvremain, dvremain, act_dvremain, spd_gnd, spd ]
 
             rowdat.append(row)
 
             t += dt
 
-        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega", "rel omega", "Stage DV (SL)", "Craft DV (SL)", "Ground speed", "Orbit Speed" ]
+        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega", "rel omega", "Stage DV (SL)", "Craft DV (SL)", "Craft DV", "Ground speed", "Orbit Speed" ]
         print( tabulate.tabulate( rowdat, headers = headers) )
 
         

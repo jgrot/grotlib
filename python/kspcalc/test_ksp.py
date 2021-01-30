@@ -64,7 +64,7 @@ def T2DS1ME( ) :
             compareSolutions( flyer.soln, soln_compare )      
         print("SUCCESS")
 
-    flyer.plot( )
+    # flyer.plot( )
 
 
 def T2DS2ME( ) :
@@ -117,7 +117,7 @@ def T2DS2ME( ) :
             compareSolutions( fly_s2.soln, soln_compare["stage2"] )
         print("SUCCESS")
             
-    fly_s2.plot( t0 = 0.0, dt = 10.0 )
+    # fly_s2.plot( t0 = 0.0, dt = 10.0 )
     fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
 
     
