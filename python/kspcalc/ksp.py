@@ -28,6 +28,7 @@ KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
 
 Rgas = 8.3145 # J/mol/K
 AirMmass = 28.84E-3 # kg/mol
+p0_Pa = 100174.2 # For Isp scaling
 
 angle_db = {
     # Number of radians in angle unit
@@ -268,11 +269,11 @@ class Stage :
         self.m0_kg = m0_kg
         self.me_kg = m0_kg - self.mass_nodes[-1]
         
+        
     def dmdt( self, m_kg, throttle ) :
         '''
         @param m_kg: current mass of stage in kg
         @param throttle: 0 - 1
-        @param vac: 0 - 1, 1 being vac and 0 being sea level
         '''
 
         mfuel_kg = m_kg - self.me_kg
@@ -298,15 +299,55 @@ class Stage :
                 r_tot += throttle*r
 
             return -r_tot
+
         
+    def dvRemain( self, m_kg, p_Pa ) :
+        ### See rocket book note "RB 2021-01-30 04.15.00.pdf"
+        vac = (p0_Pa - p_Pa) / p0_Pa
+
+        if m_kg <= self.me_kg :
+            return 0.0
         
-    def thrust( self, m_kg, throttle, vac ) :
+        # Mass of vehicle (at fuel mass nodes)
+        M = [ self.me_kg + m for m in self.mass_nodes ]
+        # One for each mass node
+        DV = [0.0]
+        
+        for i in range(1,len(M)) :
+            
+            rate_rec = self.rate_edges[i-1]
+
+            sr = 0.0
+            st = 0.0
+
+            for r, isl, iva in rate_rec :
+                isp = (1.0 - vac)*isl + vac*iva
+                sr += r
+                st += (r*isp)
+
+            isp_eqv = st / sr
+
+            dv = isp_eqv * math.log( M[i] / M[i-1] )
+            DV.append( dv+DV[i-1] )
+
+            if m_kg >= M[i-1] and m_kg <= M[i] :
+                a = ( m_kg - M[i-1] ) / ( M[i] - M[i-1] )
+                return DV[i-1]*(1.0-a) + DV[i]*a
+
+        # If we get here then it probably means this is a later
+        # (ligther) stage being queried for its DV
+        return DV[-1]
+
+        
+    def thrust( self, m_kg, throttle, p_Pa ) :
         '''
         @param m_kg: current mass of stage
         @param throttle: 0 - 1
-        @param vac: 0 - 1, 1 being vac and 0 being sea level
+        @param p_Pa: ambient pressure in Pa
         '''
-
+        
+        vac = (p0_Pa - p_Pa) / p0_Pa
+        
         mfuel_kg = m_kg - self.me_kg
         
         if mfuel_kg < 1.0E-7 :
@@ -377,14 +418,17 @@ class FlyingStage :
 
     The main inputs are the throttle function and the orientation function
 
-    @param fthrottle = function( t, m, r, th, vr, om ) -> 0-1
-    @param falpha = function( t, m, r, th, vr, om, R ) -> angle relative to body normal, RHR applies
+    @param fthrottle = function( t, y ) -> 0-1
+    @param falpha = function( t, y, FlyingStage ) -> angle relative to body normal, RHR applies
     '''
-    def __init__( self, stage, body_name, fthrottle, falpha ) :
+    def __init__( self, stage, stage_name,  body_name, fthrottle, falpha ) :
         self.stage = stage
+        self.stage_name = stage_name
         self.body_name  = body_name
         self.fthrottle = fthrottle
         self.falpha = falpha
+        self.sm1 = None # Previous stage
+        self.sp1 = None # Next stage
 
         self.body = bodies_db[ body_name ]
         (self.GM, GMu) = self.body["GM"] # units of m3/s2
@@ -394,7 +438,6 @@ class FlyingStage :
 
         self.fpress = self.body["fpress"]
         self.fdens = self.body["fdens"]
-        self.p0 = self.fpress(0.0)
 
         tday, tday_u = self.body["tday"]
         tday_s = tday * uconv( time_db, tday_u, "s" )
@@ -404,8 +447,7 @@ class FlyingStage :
         m, r, th, vr, om = y
         alt = r - self.R
         p = self.fpress( alt )
-        vac_fac = (self.p0 - p)/self.p0
-        return self.stage.thrust( m, self.fthrottle(t, y), vac_fac )
+        return self.stage.thrust( m, self.fthrottle(t, y), p )
 
     def a_r( self, t, y ) :
         m, r, th, vr, om = y
@@ -431,12 +473,66 @@ class FlyingStage :
         return self.stage.dmdt( m, self.fthrottle(t, y) )
 
 
-    def dumpTraj( self ) :
-        for i, row in enumerate( self.soln ) :
-            t = self.solnt[i]
-            a = tuple([t] + row)
-            print("%10.2f %10.2f %10.2f %12.5e %10.2f %12.5e" % a )
+    def dumpTraj( self, t0 = None, t1 = None, dt = 5.0 ) :
 
+        if t0 is None :
+            t0 = self.solnt[0]
+
+        if t1 is None :
+            t1 = self.solnt[-1]
+        
+        t = t0
+
+        rowdat = []
+
+        flyer_last = None
+        DV_last = 0.0
+        DV = 0.0
+        
+        while t <= t1 :
+            Y, crashed, flyer = self.flyTo( t )
+
+            if flyer != flyer_last :
+                flyer_last = flyer
+                DV_last += DV
+                print("DVLAST IS ", DV_last)
+            
+            m, r, th, vr, om = Y
+
+            om_gnd = om - flyer.body_omega
+            
+            # Compute other things
+            x = ( r * math.cos( th ) )
+            y = ( r * math.sin( th ) )
+
+            dvremain = flyer.dvRemain( m, p0_Pa )
+            sdvremain = flyer.stage.dvRemain( m, p0_Pa )
+
+            vom_gnd = r*om_gnd
+            spd_gnd = math.sqrt( vr*vr + vom_gnd*vom_gnd )
+
+            vom = r*om
+            spd = math.sqrt( vr*vr + vom*vom )
+            
+            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd, sdvremain, dvremain, spd_gnd, spd ]
+
+            rowdat.append(row)
+
+            t += dt
+
+        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega", "rel omega", "Stage DV (SL)", "Craft DV (SL)", "Ground speed", "Orbit Speed" ]
+        print( tabulate.tabulate( rowdat, headers = headers) )
+
+        
+    def dvRemain( self, m_kg, p_Pa ) :
+        
+        mydv = self.stage.dvRemain( m_kg, p_Pa )
+
+        if self.sp1 is not None :
+            return mydv + self.sp1.dvRemain( m_kg, p_Pa )
+        else :
+            return mydv
+        
 
     def launch( self, y0 = None, sm1 = None, t0 = None ) :
         '''Launch the solver.  The stage can be anywhere in space.
@@ -448,8 +544,10 @@ class FlyingStage :
         
         self.crashed = False
 
-        # Store the previous stage
+        # Link the stages
         self.sm1 = sm1
+        if sm1 is not None :
+            sm1.sp1 = self
 
         if y0 is not None and sm1 is not None :
             raise Exception("Cannot set both y0 and sm1")
@@ -459,7 +557,7 @@ class FlyingStage :
         elif sm1 is not None :
             if t0 is None :
                 raise Exception("Must set t0 for previous stage")
-            y0, crashed = sm1.flyTo( t0 )
+            y0, crashed, flyer = sm1.flyTo( t0 )
             if crashed :
                 raise Exception("Cannot stage after a crash")
             # Replace m with M0 of this stage
@@ -478,10 +576,20 @@ class FlyingStage :
         self.soln = [ y0 ]
         self.maxr = 0.0
         
+
     def flyTo( self, t ) :
+        '''Advance and / or sample a trajectory.  Will sample from earlier
+        stages if they exist.
+
+        Returns: ( y(t), <Bool: crashed at t>, FlyingStage at t ) 
+
+        '''
 
         if t < self.solnt[0] :
-            raise Exception("input time is before launch time")
+            if self.sm1 is not None :
+                return self.sm1.flyTo( t )
+            else :
+                raise Exception("input time is before launch time")
         
         if t >= self.solnt[-1] :
             if not self.crashed :
@@ -496,46 +604,35 @@ class FlyingStage :
                         self.soln.append( list(y) )
             if self.crashed :
                 print( "WARNING: FlyingStage is crashed at time %f" % t )
-                return ( copy.copy(self.soln[-1]), True )
+                return ( copy.copy(self.soln[-1]), True, self )
 
-        # Interpolate
-        # Rationale: I reserve the right to use a variable time
-        # step interval in the future.
-        i = (bisect.bisect( self.solnt, t ) - 1)
-        t0 = self.solnt[i]
-        t1 = self.solnt[i+1]
-        a = (t - t0)/(t1 - t0)
-        y0 = self.soln[i]
-        y1 = self.soln[i+1]
-        y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
+        y = interp2Dtraj( t, self.solnt, self.soln )
         
-        return ( y, False )
+        return ( y, False, self )
 
     
-    def plot( self ) :
+    def plot( self, t0 = None, t1 = None, dt = 5.0 ) :
 
         import matplotlib
         import matplotlib.pyplot as plt
+
+        if t0 is None :
+            t0 = self.solnt[0]
+
+        if t1 is None :
+            t1 = self.solnt[-1]
         
-        # Collect stages in reverse order
-        stages = []
-        this_stage = self
-        while True :
-            stages.append( this_stage )
-            this_stage = this_stage.sm1
-            if this_stage is None :
-                break
-
-        stages.reverse()
-
         x = []
         y = []
-            
-        for stage in stages :
+        
+        t = t0
 
-            for m, r, th, vr, om in stage.soln :
-                x.append( r * math.cos( th ) )
-                y.append( r * math.sin( th ) )
+        while t <= t1 :
+            Y, crashed, flyer = self.flyTo( t )
+            m, r, th, vr, om = Y
+            x.append( r * math.cos( th ) )
+            y.append( r * math.sin( th ) )
+            t += dt
 
         xb = [ min(x), max(x) ]
         yb = [ min(y), max(y) ]
@@ -557,7 +654,7 @@ class FlyingStage :
         ax.set_xlim( xmin, xmax )
         ax.set_ylim( ymin, ymax )
         ax.set_aspect(1.0)
-        ax.plot(x, y)
+        ax.plot(x, y, marker = "o")
 
         Nth = 100
         dth = 2.0*math.pi / float(Nth - 1)
@@ -599,13 +696,28 @@ def processBodyDbs( ) :
         if "apt" in bodyrec :
             alts, ps, ts = zip( *bodyrec["apt"] )
 
-            dens = [ AirMmass*p*1000.0/ts[i]/Rgas for i,p in enumerate(ps) ]
+            dens = [ AirMmass*p/ts[i]/Rgas for i,p in enumerate(ps) ]
 
             bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
             bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+
+
+def interp2Dtraj( t, solnt, soln ) :
+    '''
+    @param soln: array of trajectory2D_solver y 
+    '''
     
-
-
+    # Rationale: I reserve the right to use a variable time
+    # step interval in the future.
+    i = (bisect.bisect( solnt, t ) - 1)
+    t0 = solnt[i]
+    t1 = solnt[i+1]
+    a = (t - t0)/(t1 - t0)
+    y0 = soln[i]
+    y1 = soln[i+1]
+    y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
+    
+    return y
 
 def trajectory2D_solver( dmdt, a_r, a_th, y0, t0 ) :
     '''Numerically integrates the planar orbit equations as a function of time.

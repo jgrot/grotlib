@@ -50,7 +50,7 @@ def T2DS1ME( ) :
             a = math.atan( vr / vth )
         return a
     
-    flyer = ksp.FlyingStage( stage_1, "Kerbin", fthrottle, falpha )
+    flyer = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
     flyer.launch( )
     # Fly until crash
     flyer.flyTo( 30000 )
@@ -95,11 +95,11 @@ def T2DS2ME( ) :
             a = math.atan( vr / vth )
         return a
     
-    fly_s1 = ksp.FlyingStage( stage_1, "Kerbin", fthrottle, falpha )
+    fly_s1 = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
     fly_s1.launch( )
     fly_s1.flyTo( 85.40 )
 
-    fly_s2 = ksp.FlyingStage( stage_2, "Kerbin", fthrottle, falpha )
+    fly_s2 = ksp.FlyingStage( stage_2, "Stage 2",  "Kerbin", fthrottle, falpha )
     fly_s2.launch( sm1 = fly_s1, t0 = 85.40 )
     fly_s2.flyTo( 30000 )
     
@@ -117,7 +117,8 @@ def T2DS2ME( ) :
             compareSolutions( fly_s2.soln, soln_compare["stage2"] )
         print("SUCCESS")
             
-    fly_s2.plot( )
+    fly_s2.plot( t0 = 0.0, dt = 10.0 )
+    fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
 
     
 if __name__ == "__main__" :
