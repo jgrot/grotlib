@@ -26,6 +26,20 @@ def compareSolutions( soln, soln_ref ) :
 
 
 def T2DS1ME( ) :
+    # KSP Flight:
+    #
+    # Max alt: 138247
+    # Crash time: 6:52 (412 s)
+    #
+    # Model:
+    #
+    # Drag   Max Alt    Crash
+    # 0.130  112690     365
+    # 0.100  125243     390
+    # 0.090  129713     395
+    # 0.080  134325     405
+    # 0.070  139099     415
+    # 0.072  138121     410
     
     print("Testing traj2d with one stage with mixed engines (T2DS1ME)")
     
@@ -65,11 +79,19 @@ def T2DS1ME( ) :
             compareSolutions( flyer.soln, soln_compare )      
         print("SUCCESS")
 
-    # flyer.plot( )
+    flyer.plot( )
+    flyer.dumpTraj( )    
 
 
 def T2DS2ME( ) :
-    
+    # KSP Flight
+    #
+    # 50s stage
+    # 30km track orbit
+    #
+    # Max alt:
+    # Crash Time:
+    #
     print("Testing traj2d with two stages with mixed engines (T2DS2ME)")
     
     tname = "T2DS2ME"
@@ -90,20 +112,18 @@ def T2DS2ME( ) :
     def falpha( t, y, flyer ) :
         m, r, th, vr, om = y
         vth = r*om
-        if r < (flyer.R+7.5E3) :
+        if r < (flyer.R+30.0E3) :
             return 0.5 * math.pi
-        if vth == 0.0 :
-            a = 0.5 * math.pi
         else :
             a = math.atan( vr / vth )
         return a
     
     fly_s1 = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
     fly_s1.launch( )
-    fly_s1.flyTo( 85.40 )
+    fly_s1.flyTo( 84.00 )
 
     fly_s2 = ksp.FlyingStage( stage_2, "Stage 2",  "Kerbin", fthrottle, falpha )
-    fly_s2.launch( sm1 = fly_s1, t0 = 85.40 )
+    fly_s2.launch( sm1 = fly_s1, t0 = 84.00 )
     fly_s2.flyTo( 30000 )
 
     t = 0.0
@@ -112,7 +132,7 @@ def T2DS2ME( ) :
         Y, crashed, flyer = fly_s2.flyTo( t )
         m, r, th, vr, om = Y
         craft_asl_dvremain = flyer.dvRemain( m, ksp.C_p0 )
-        craft_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
+        craft_dvremain = flyer.dvRemain( m, flyer.fpress.call(r-flyer.R)[0] )
         stage_asl_dvremain = flyer.stage.dvRemain( m, ksp.C_p0 )
         DV.append( (craft_asl_dvremain, craft_dvremain, stage_asl_dvremain) )
         t += 10
@@ -133,7 +153,7 @@ def T2DS2ME( ) :
             compareSolutions( DV, soln_compare["DV"] )
         print("SUCCESS")
             
-    # fly_s2.plot( t0 = 0.0, dt = 10.0 )
+    fly_s2.plot( t0 = 0.0, dt = 10.0 )
     fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
 
     

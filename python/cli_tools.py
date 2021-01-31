@@ -1,8 +1,13 @@
+# Copyright © 2021 Jonathan Grot
+
 import collections
 import re
 import six
 import sys
 import tabulate
+
+# Grotlib imports
+import type_tools
 
 def addVerboseOptionTo( subparser ) :
     """Adds a verbose (dest=debug) option to an argparse parser
@@ -10,20 +15,6 @@ def addVerboseOptionTo( subparser ) :
     """
     subparser.add_argument('-v', dest='debug', default=False, action='store_true',
                            help='Print verbose info for debugging purposes')
-
-
-def isIterableNonString( item ) :
-    """From https://stackoverflow.com/questions/1055360/how-to-tell-a-variable-is-iterable-but-not-a-string
-
-    See Answer from sorin.
-
-    TODO: find new home.
-    """
-
-    return (
-        isinstance(item, collections.Iterable) 
-        and not isinstance(item, six.string_types)
-    )
 
 
 def cli_closure( closure, dump_traceback = False ) :
@@ -184,7 +175,7 @@ class RowWriter :
 
             if iitem == self.ncols :
                 
-                if isIterableNonString( item ) and list_in_col :
+                if type_tools.isIterableNonString( item ) and list_in_col :
 
                     s3 = repr( item[0] )
                     keep_writing = item[1:]

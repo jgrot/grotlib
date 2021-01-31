@@ -1,3 +1,5 @@
+# Copyright © 2021 Jonathan Grot
+
 '''Recommended usage
 
 import compare as cmp
@@ -38,3 +40,14 @@ def fsame(a, b, tolfrac=1E-15, report_to = sys.stderr, report = CMP_BOTH ) :
 
     return same
 
+def flessthan(a, b, tolfrac=1E-15 ) :
+    ''' a <? b '''
+
+    tol = tolfrac*0.5*(abs(a) + abs(b))
+    return ( a-b < -tol )
+
+def fgreaterthan(a, b, tolfrac=1E-15 ) :
+    ''' a >? b '''
+
+    tol = tolfrac*0.5*(abs(a) + abs(b))
+    return ( a-b > tol )

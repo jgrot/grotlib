@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+# Copyright © 2021 Jonathan Grot
 
 import argparse
 import bisect
@@ -9,9 +10,11 @@ import numpy as np
 import os
 import scipy.optimize as spop
 from scipy.integrate import ode
-from scipy.interpolate import interp1d
 import sys
 import tabulate
+
+# Grotlib modules
+import functor
 
 # Verify Python version
 if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
@@ -137,6 +140,10 @@ engine_db = {
     }
 }
 
+nosecone_db = {
+    
+}
+
 #
 # Prototype code
 #
@@ -197,6 +204,35 @@ template_maneuvers = [
 	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     },
 ]
+
+
+class DragDivergence( functor.Functor ) :
+    def __init__( self, cdiv=80.0, ctail=0.15 ) :
+        
+        rangemin = [0.0]
+        rangemax = [20.0]
+        
+        super().__init__( rangemin, rangemax )
+        
+        # Divergence coeff
+        self.c1 = cdiv
+        
+        # Tail coeff
+        self.c2 = ctail
+
+    def call( self, *X ) :
+        self.checkRange( X )
+        M = X[0]
+        if M <= 1.0 :
+            y = 1.0 + math.exp( -self.c1*math.pow(M - 1.0, 2.0) )
+        else :
+            y= 1.0 + math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
+        return [y]
+        
+    def nDep( self ) :
+        return 1
+    
+dd = DragDivergence()
 
 #
 # Stage and FlyingStage classes used to model craft for
@@ -481,9 +517,15 @@ class FlyingStage :
         '''
         m, r, th, vr, om = y
         alt = r - self.R
+
+        omb = om - self.body_omega
+        vthb = r*omb
+        
+        v = math.sqrt(vr*vr + vthb*vthb)
+        M = v/343.0
         
         return ( ( self._thrust(t, y) * math.sin( self.falpha(t, y, self) ) / m )
-                 - self.GM/(r*r) - self.stage.dragco*abs(vr)*vr*self.fdens(alt)/m )
+                 - self.GM/(r*r) - self.stage.dragco * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
 
     def _a_th( self, t, y ) :
         '''(private) Compute polar component of acceleration
@@ -497,11 +539,14 @@ class FlyingStage :
         # Body relative theta motion for drag.  R motion is the same.
         omb = om - self.body_omega
         vthb = r*omb
-        
+
+        v = math.sqrt(vr*vr + vthb*vthb)
+        M = v/343.0
+                
         vth = r*om
         alt = r - self.R
         return ( ( self._thrust(t, y) * math.cos( self.falpha(t, y, self) ) / m )
-                 - self.stage.dragco*abs(vthb)*vthb*self.fdens(alt)/m )
+                 - self.stage.dragco * dd.call(M)[0] * abs(vthb) * vthb * self.fdens.call(alt)[0]/m )
     
     def _dmdt( self, t, y ) :
         '''(private) Compute dmdt
@@ -522,7 +567,7 @@ class FlyingStage :
         
         m, r, th, vr, om = y
         alt = r - self.R
-        p = self.fpress( alt )
+        p = self.fpress.call( alt )[0]
         return self.stage.thrust( m, self.fthrottle(t, y), p )
 
     def dumpTraj( self, t0 = None, t1 = None, dt = 5.0 ) :
@@ -551,6 +596,10 @@ class FlyingStage :
         while t <= t1 :
             
             Y, crashed, flyer = self.flyTo( t )
+
+            if crashed :
+                break
+            
             m, r, th, vr, om = Y
 
             om_gnd = om - flyer.body_omega
@@ -560,7 +609,7 @@ class FlyingStage :
             y = ( r * math.sin( th ) )
 
             craft_asl_dvremain = flyer.dvRemain( m, C_p0 )
-            craft_dvremain = flyer.dvRemain( m, flyer.fpress(r-flyer.R) )
+            craft_dvremain = flyer.dvRemain( m, flyer.fpress.call(r-flyer.R)[0] )
             stage_dvremain = flyer.stage.dvRemain( m, C_p0 )
 
             vom_gnd = r*om_gnd
@@ -776,8 +825,10 @@ def processBodyDbs( ) :
 
             dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
 
-            bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
-            bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+            # bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+            bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
+            # bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
+            bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
 
 def interp2Dtraj( t, solnt, soln ) :
     '''Utility function for makePolarMotionSolver.
@@ -1296,22 +1347,6 @@ def main() :
     augmentBodyDbs( )
     processBodyDbs( )
 
-    if False :
-        import matplotlib
-        import matplotlib.pyplot as plt
-        matplotlib.use('TkAgg')
-
-        kerbin_dens = bodies_db["Kerbin"]["fdens"]
-        
-        y = []
-        for i in range(60000) :
-            y.append( kerbin_dens(i) )
-            
-        fig, ax = plt.subplots()
-        ax.plot(range(60000), y)
-        plt.show()
-
-    
     parser = argparse.ArgumentParser(description="KSP Calculator")
 
     subparsers = parser.add_subparsers(help="Commands", dest="command")
@@ -1351,8 +1386,13 @@ def main() :
     cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
 
-    # Command "stage"
-    cmd_stage = subparsers.add_parser("stage", help="Test stage")
+    # Command "fly"
+    cmd_fly = subparsers.add_parser("fly", help="Fly a craft")
+    cmd_fly.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
+    cmd_fly.add_argument("craft", help="Name of craft")
+
+    # Command "plotfuncs"
+    cmd_plotfuncs = subparsers.add_parser("plotfuncs", help="Plot up the model functions")
 
     # Command "uconv"
     cmd_uconv = subparsers.add_parser("uconv", help="Call the units converter function")
@@ -1450,14 +1490,45 @@ def main() :
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
         
-    if args.command == "stage" :
-        s2 = Stage((7.573,'t'), [(2,"RT-5"),(1,"RT-10")], .130)
-        s2.dumpJSON( "T2DS2ME_stage2.json" )
+    if args.command == "fly" :
+        stage = Stage()
+        stage.loadJSON( args.craft )
+        
+        def fthrottle( t, y ) :
+            return 1.0
+        def falpha( t, y, flyer ) :
+            return 0.5 * math.pi
 
-        s1 = Stage((15.263,'t'), [(1,"BACC")], .130)
-        s1.dumpJSON( "T2DS2ME_stage1.json" )
+        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, falpha )
+        flyer.launch( )
+
+        flyer.dumpTraj(t1 = 30000, dt = 1.0)
         
+    if args.command == "plotfuncs" :
+
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        fig1, ax1 = plt.subplots()
+        dd.plot( ax1, [(0.0, 7.5)] )
+        ax1.set_title("Drag Divergence")
+        ax1.set_xlabel("Mach number")
+        ax1.set_ylabel("Multiplier")
+
+        fig2, ax2 = plt.subplots()
+        bodies_db["Kerbin"]["fdens"].plot( ax2, [True] )
+        ax2.set_title("Kerbin Density")
+        ax2.set_xlabel("Altitude (m)")
+        ax2.set_ylabel("Density (kg/m^3)")
         
+        fig3, ax3 = plt.subplots()
+        bodies_db["Kerbin"]["fpress"].plot( ax3, [True] )
+        ax3.set_title("Kerbin Pressure")
+        ax3.set_xlabel("Altitude (m)")
+        ax3.set_ylabel("Pressure (Pa)")
+        
+        plt.show()
+                
     if args.command == "uconv" :
         value, unit = eval( args.vin )
 
