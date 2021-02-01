@@ -1436,6 +1436,35 @@ def main() :
 
         print("DV to reach circular orbit: %s" % dvOrbit(args.body, altitude))
 
+    if args.command == "fly" :
+        stage = Stage()
+        stage.loadJSON( args.craft )
+        
+        def fthrottle( t, y ) :
+            return 1.0
+        def falpha( t, y, flyer ) :
+            return 0.5 * math.pi
+
+        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, falpha )
+        flyer.launch( )
+
+        flyer.dumpTraj(t1 = 30000, dt = 1.0)
+        
+    if args.command == "g" :
+        print("Body: %s" % args.body)
+        altitude = eval(args.alt)
+        alt, unit = altitude
+        print("Altitude: %s %s" % (alt, unit))
+
+        accel_g = g(args.body, altitude)
+        print("Accel of gravity: %s" % accel_g)
+
+        if args.mass is not None :
+            mass, umass = eval( args.mass )
+            mass2 = mass * uconv( mass_db, umass, "kg" )
+            force_kN = accel_g * mass2 / 1E3
+            print("Force on mass of %f %s is %f kN" % ( mass, umass, force_kN ))
+
     if args.command == "jump" :
         alt = eval(args.alt)
         body = args.body
@@ -1464,23 +1493,7 @@ def main() :
             print(tabulate.tabulate(tabrows))
         else :
             raise Exception("Bad value for solve_for")
-        
-    if args.command == "g" :
-        print("Body: %s" % args.body)
-        altitude = eval(args.alt)
-        alt, unit = altitude
-        print("Altitude: %s %s" % (alt, unit))
-
-        accel_g = g(args.body, altitude)
-        print("Accel of gravity: %s" % accel_g)
-
-        if args.mass is not None :
-            mass, umass = eval( args.mass )
-            mass2 = mass * uconv( mass_db, umass, "kg" )
-            force_kN = accel_g * mass2 / 1E3
-            print("Force on mass of %f %s is %f kN" % ( mass, umass, force_kN ))
-
-            
+                
     if args.command == "orbitV" :
         print("Body: %s" % args.body)
         altitude = eval(args.alt)
@@ -1489,21 +1502,6 @@ def main() :
 
         print("Circular orbit speed: %s" % orbitV(args.body, altitude))
 
-        
-    if args.command == "fly" :
-        stage = Stage()
-        stage.loadJSON( args.craft )
-        
-        def fthrottle( t, y ) :
-            return 1.0
-        def falpha( t, y, flyer ) :
-            return 0.5 * math.pi
-
-        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, falpha )
-        flyer.launch( )
-
-        flyer.dumpTraj(t1 = 30000, dt = 1.0)
-        
     if args.command == "plotfuncs" :
 
         import matplotlib

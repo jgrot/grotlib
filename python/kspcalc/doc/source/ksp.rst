@@ -32,19 +32,31 @@ Use the argparse help system to get more details.
 The current list of commands is:
 
 **craft**
-  Analyze a craft's DV
+  Analyze a craft's DV.
 
 **dvMap**
-  Compute a DV map based on a maneuvers file
+  Compute a DV map based on a maneuvers file.
   
 **dvOrbit**
-  Compute DV to get into a circular orbit at an altitude
+  Compute DV to get into a circular orbit at an altitude.
 
+**fly**
+  Load a stage file, fly it straight up using the polar motion solver, and see what happens.
+  
 **g**
-  Compute gravitational acceleration of a body at an altitude
+  Compute gravitational acceleration of a body at an altitude.
+
+**jump**
+  Solve analytical (experimental) expression for the thrust or amount of fuel needed to launch a craft to a certain altitude.
   
 **orbitV**
-  Compute speed at a circular orbit around a body
+  Compute speed at a circular orbit around a body.
+
+**plotfuncs**
+  Plot the functors currently used in the various models of kspcalc.
+
+**uconv**
+  Perform a unit conversion.
 
 API
 ---

@@ -23,11 +23,10 @@ class RangeError( Exception ) :
         super().__init__( msg )
 
 class Functor :
-    '''A self-plottable abstract function class.
+    '''Abstract base class for a multi-variable function with built-in plotting capability.
 
     Independent variables are referred to as X: [ x1, x2, ... ]
     Dependent variables are referred to as Y: [ y1, y2, ... ]
-    
 
     :param iterable rangemin: (x1min, x2min, ...)
     :param iterable rangemax: (x1max, x2max, ...)
@@ -36,7 +35,7 @@ class Functor :
       * Derived class must provide nDep() method to return number of independent variables returned in call()
       * Derived class definition of call()
         * call() MUST have the signature call(self, *X)
-        * should call checkRange(X)
+        * should usually call checkRange(X) before anything else
         * return Y: [ y1, y2, ... ]
 
     :Throws:
@@ -45,13 +44,14 @@ class Functor :
       * InitError
     '''
     def __init__( self, rangemin, rangemax ) :
+        
         self.rangemin = rangemin
         self.n_indep_var = len( rangemin )
 
-        if len( rangemin ) != self.n_indep_var :
-            raise BadDimError( "Inconsistent range lengths" )
-        
-        self.rangemax = rangemax
+        if len( rangemax ) != self.n_indep_var :
+            raise BadDimError( "Inconsistent range dimensions" )
+        else :
+            self.rangemax = rangemax
 
         for i, xmin in enumerate( rangemin ) :
             if rangemax[i] <= rangemin[i] :
@@ -64,7 +64,7 @@ class Functor :
             raise InitError( "Attempt to call derived class method nDep() failed" )
 
     def call( self, *X ) :
-        raise Exception("This is an abstract class.  Please override the call method.")
+        raise Exception("Please override the call() method for your derived class.")
 
     def checkRange( self, X ) :
         '''Checks dimensionality of X and the elements of X against ranges.
@@ -83,20 +83,20 @@ class Functor :
                 raise RangeError( msg )
 
     def plot( self, mpl_axes, range_specs, resolution = None, dep_var = 0 ) :
-        '''Plots the function.
+        '''Makes 1D or 2D plots of slices through the range space of the function.
 
-        :param object: Matplotlib axes object to plot to
-        :param list range_specs: [ {<True> | (min,max) | <Fixed value>}, ... ]
-        :param list resolution: [ <Number of points along range for indep var>, ... ], one for each indep var to avoid confusion even if they aren't used as a plot axis.  None -> [100, 100, ...]
-        :param int dep_var: Index into result Y to plot
+        :param object: Matplotlib Axes object to plot to.  Tip: for 1D plots, call repeatedly for the same Axes object to put mutiple plots on the same Axes.
+        :param list range_specs: [ {<True> | (min,max) | <Fixed value>}, ... ].  See discussion below.
+        :param list resolution: [ <Number of points along range axis for indep var>, ... ], one for each indep var, even the ones that are fixed, to avoid confusion.  A value of None yields [100, 100, ...].
+        :param int dep_var: Index into result Y to plot.
 
-        'range_specs' contains instructions for each independent variable:
-          * <True> indicates that the function should be plotted over the full range for that independent variable
-          * (min,max) indicates to use a specified
-          * <Fixed value> indicates that this independent variable should have a fixed value
+        The 'range_specs' argument contains instructions for each independent variable:
+          * <True> indicates that the function should be plotted over the full range (specified in the constructor) for that independent variable
+          * (min,max) overrides the specified range.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.
+          * <Fixed value> indicates that this independent variable should have a fixed value.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.  
         
         :Matplotlib Tips:
-        The axes object:
+        Annotate the Axes object with:
            * set_title()
            * set_xlable()
            * set_ylabel()
@@ -108,61 +108,74 @@ class Functor :
         import numpy
         
         if len(range_specs) != self.n_indep_var :
-            raise BadDimError( "Bad number of elements in 'range_specs'" )
+            raise BadDimError( "Bad number of elements in argument range_specs" )
 
         # Process range_specs
         plot_ndim = 0
         dimrange = []
-        plot_indep = [] # Indexes of indep variables for plotting
+        plot_axes_vars = [] # Indexes of indep variables to use for plot axes
         
         for ispec, spec in enumerate(range_specs) :
             if spec == True : # i.e Explcitly equals True
+                # Use the ranges specified in the constructor
                 dimrange.append( (self.rangemin[ispec], self.rangemax[ispec]) )
-                plot_indep.append( ispec )
+                plot_axes_vars.append( ispec )
                 plot_ndim += 1
             elif type_tools.isIterableNonString( spec ) :
+                # For the plot, override the ranges specified in the constructor
                 if len(spec) != 2 :
                     raise BadDimError("Range limit specification must be (min, max)")
                 if spec[1] <= spec[0] :
-                    raise BadValueError("Bad limited range spec, %s" % repr(spec))
+                    raise BadValueError("Bad order for limited range spec %s" % repr(spec))
                 dimrange.append( spec )
-                plot_indep.append( ispec )
+                plot_axes_vars.append( ispec )
                 plot_ndim += 1
             elif isinstance( spec, float ) or isinstance( spec, int ) :
+                # Fixed value for indep var
                 dimrange.append( spec )
             else :
-                raise BadValueError( "Bad value for specification: " + repr(spec) )
+                raise BadValueError( "Bad expression for specification: " + repr(spec) )
             
         if plot_ndim > 2 :
-            raise BadValueError( "Too many plot dimensions in range specification" )
+            raise BadValueError( "Too many independent variables are used for plot axes in range specification" )
 
         if plot_ndim == 0 :
-            raise BadValueError( "No plot dimension variables found in range specification" )
+            raise BadValueError( "Could not identify independent variables to use for plot dimensions in specifications" )
 
         if resolution is None :
+            # Default of 100 for each plot dimension
             resolution = [100] * self.n_indep_var
         elif len( resolution ) != self.n_indep_var :
-            raise BadDimError( "Bad dimensionality of resolution list" )
+            raise BadDimError( "Bad dimensionality for resolution argument" )
 
+        # Make sure elements of resolution argument are integers.
+        # Note: the value of the elements are checked during plot
+        # pre-processing as some will be ignored.
         for r in resolution :
             if not isinstance( r, int ) :
                 raise BadValueError( "Bad resolution term: %s (must be int)" % r )
-        
+
+        # Make sure dep_var is sane.
         if dep_var < 0 or dep_var >= self.n_dep_var :
             raise BadValueError( "Bad value for dep_var" )
 
-        xvalues = [] # One list, or fixed value, for each dim
+        # Computed indep var value lists (and fixed values) for the points being plotted.
+        xvalues = []
 
+        # Evaluate independent variable ranges and fixed values.
         for ispec, spec in enumerate(dimrange) :
             try :
+                # Try to parse a range
                 xmin, xmax = spec
                 xfixed = None
             except :
+                # Could not get range, this element is a fixed value.
                 xmin = None
                 xmax = None
                 xfixed = spec
-                
+
             if xmin is not None :
+                # Expand a range into a list of values for plotting
                 r = resolution[ispec]
                 if r < 5 :
                     raise BadValueError( "Resolution term, %i, is too low (must be 10 or more)" % r )
@@ -170,40 +183,41 @@ class Functor :
                 xx = [ xmin + dx*i for i in range(r) ]
                 xvalues.append( xx )
             else :
+                # Record a fixed value
                 xvalues.append( xfixed )
 
         # Generate Y values and plot
-
         if plot_ndim == 1 :
-            
-            ii = plot_indep[0] # index of independent plot axis
+            # Indep var used for horizontal axis
+            ii = plot_axes_vars[0]
+            # Get resolution
             r = resolution[ii]
 
             y = []
-            x1 = []
+            x = []
             for i in range(r) :
                 X = []
                 for l in range( self.n_indep_var ) :
                     if l==ii :
                         X.append( xvalues[l][i] )
-                        x1.append( xvalues[l][i] )
+                        x.append( xvalues[l][i] )
                     else :
                         X.append( xvalues[l] )
                 y.append( self.call( *X )[dep_var] )
                 
-            mpl_axes.plot(x1, y, marker = "o")
+            mpl_axes.plot(x, y, marker = "o")
 
         if plot_ndim == 2 :
 
-            ii1 = plot_indep[0]
-            ii2 = plot_indep[1]
+            ii1 = plot_axes_vars[0]
+            ii2 = plot_axes_vars[1]
 
-            rx = resolution[ii1]
-            ry = resolution[ii2]
+            r1 = resolution[ii1]
+            r2 = resolution[ii2]
 
-            z = numpy.zeros( (rx, ry) )
-            for j in range( ry ) :
-                for i in range( rx ) :
+            y = numpy.zeros( (r1, r2) )
+            for j in range( r2 ) :
+                for i in range( r1 ) :
                     X = []
                     for l in range( self.n_indep_var ) :
                         if l == ii1 :
@@ -214,11 +228,10 @@ class Functor :
                             X.append( x )
                         else :
                             X.append( xvalues[l] )
-                    z[i,j] = self.call( *X )[dep_var]
+                    y[i,j] = self.call( *X )[dep_var]
 
             extent = [ self.rangemin[ii1], self.rangemax[ii1], self.rangemin[ii2], self.rangemax[ii2] ]
-            mpl_axes.imshow( z.transpose(), origin='lower', extent=extent )
-
+            mpl_axes.imshow( y.transpose(), origin='lower', extent=extent )
 
 class Interp1DFunctor( Functor ) :
     '''A Functor based on scipy.interpolate.interp1d
@@ -241,8 +254,9 @@ class Interp1DFunctor( Functor ) :
     def nDep( self ) :
         return 1
 
-
-            
+#
+# Unit test (and examples)
+#
 if __name__ == "__main__" :
     # Unit test and demo
 
@@ -289,7 +303,6 @@ if __name__ == "__main__" :
         print("FAIL, did not trap out of range inputs")
         exit(1)
 
-
     try :
         Ybad = f.call( 0.0, 0.0 )
     except BadDimError :
@@ -300,12 +313,11 @@ if __name__ == "__main__" :
     else :
         print("FAIL, did not trap bad dimensions")
         exit(1)
-
         
     import matplotlib
     import matplotlib.pyplot as plt
 
-    if False :
+    if True :
         fig1, ax1 = plt.subplots()
         f.plot(ax1, [True, 0.0, 0.0] )
         f.plot(ax1, [0.0, True, 0.0] )
@@ -319,8 +331,7 @@ if __name__ == "__main__" :
         fig3, ax3 = plt.subplots()
         f.plot(ax3, [True, True, 0.0] )
         
-
-    if False :
+    if True :
         class Axis( Functor ) :
 
             def __init__( self, rangemin, rangemax, whichaxis ) : 
@@ -351,9 +362,6 @@ if __name__ == "__main__" :
         fig4, ax4 = plt.subplots()
         fz.plot(ax4, [0.0, True, True] )
 
-        fig5, ax5 = plt.subplots()
-        dd.plot(ax5, [(0.0, 4.0)])
-    
     plt.show()
 
     
