@@ -23,6 +23,30 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
     exit(1)
 
 KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
+KSPDBDIR = os.path.join( KSPCALCDIR, "data/databases" )
+KSPEXAMPLESDIR = os.path.join( KSPCALCDIR, "data/examples" )
+KSPUTDIR = os.path.join( KSPCALCDIR, "data/unit_tests" )
+
+def pthdat( filename ) :
+    '''Convenience: generate a full path to a relative location in the data directory'''
+    return os.path.join( KSPCALCDIR, "data", filename )
+
+def pthdb( filename ) :
+    '''Convenience: generate a full path to a database file.
+    '''
+    return os.path.join( KSPDBDIR, filename )
+
+def pthex( filename ) :
+    '''Convenience: generate a full path to an example file.
+    '''
+    return os.path.join( KSPEXAMPLESDIR, filename )
+
+def pthut( filename ) :
+    '''Convenience: generate a full path to a unit test file.
+    '''
+    return os.path.join( KSPUTDIR, filename )
+
+
 
 #
 # Constants
@@ -207,12 +231,15 @@ template_maneuvers = [
 
 
 class DragDivergence( functor.Functor ) :
-    def __init__( self, cdiv=80.0, ctail=0.15 ) :
+    def __init__( self, cpeak=1.0, cdiv=80.0, ctail=0.15 ) :
         
         rangemin = [0.0]
         rangemax = [20.0]
         
         super().__init__( rangemin, rangemax )
+
+        # Divergence peak
+        self.c0 = cpeak
         
         # Divergence coeff
         self.c1 = cdiv
@@ -224,9 +251,9 @@ class DragDivergence( functor.Functor ) :
         self.checkRange( X )
         M = X[0]
         if M <= 1.0 :
-            y = 1.0 + math.exp( -self.c1*math.pow(M - 1.0, 2.0) )
+            y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - 1.0, 2.0) )
         else :
-            y= 1.0 + math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
+            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
         return [y]
         
     def nDep( self ) :
@@ -676,7 +703,7 @@ class FlyingStage :
                         self.solnt.append( self.solv.t )
                         self.soln.append( list(y) )
             if self.crashed :
-                print( "WARNING: FlyingStage is crashed at time %f" % t )
+                # print( "WARNING: FlyingStage is crashed at time %f" % t )
                 return ( copy.copy(self.soln[-1]), True, self )
 
         y = interp2Dtraj( t, self.solnt, self.soln )
@@ -807,7 +834,7 @@ def augmentBodyDbs( ) :
     '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
     
     for body_key in bodies_db :
-        fname = os.path.join( KSPCALCDIR, "%s.json" % body_key )
+        fname = pthdb( "%s.json" % body_key )
         exists = os.access( fname, os.F_OK )
         if exists :
             with open( fname, 'rt' ) as f :
@@ -825,9 +852,7 @@ def processBodyDbs( ) :
 
             dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
 
-            # bodyrec["fdens"] = interp1d( alts, dens, kind="quadratic", bounds_error=False, fill_value = 0.0 )
             bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
-            # bodyrec["fpress"] = interp1d( alts, ps, kind="quadratic", bounds_error=False, fill_value = 0.0 )
             bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
 
 def interp2Dtraj( t, solnt, soln ) :

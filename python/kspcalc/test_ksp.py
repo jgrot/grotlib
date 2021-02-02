@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 
 import compare as cmp
@@ -26,30 +28,16 @@ def compareSolutions( soln, soln_ref ) :
 
 
 def T2DS1ME( ) :
-    # KSP Flight:
-    #
-    # Max alt: 138247
-    # Crash time: 6:52 (412 s)
-    #
-    # Model:
-    #
-    # Drag   Max Alt    Crash
-    # 0.130  112690     365
-    # 0.100  125243     390
-    # 0.090  129713     395
-    # 0.080  134325     405
-    # 0.070  139099     415
-    # 0.072  138121     410
     
     print("Testing traj2d with one stage with mixed engines (T2DS1ME)")
     
     tname = "T2DS1ME"
-    tfile = tname + ".pkl"    
+    tfile = ksp.pthut(tname + ".pkl")
 
     do_generate = not os.access(tfile, os.F_OK)
 
     stage_1 = ksp.Stage()
-    stage_1.loadJSON(tname + "_stage1.json")
+    stage_1.loadJSON(ksp.pthut(tname + "_stage1.json"))
     stage_1.dumpInfo( )
 
     def fthrottle( t, y ) :
@@ -95,16 +83,16 @@ def T2DS2ME( ) :
     print("Testing traj2d with two stages with mixed engines (T2DS2ME)")
     
     tname = "T2DS2ME"
-    tfile = tname + ".pkl"    
+    tfile = ksp.pthut(tname + ".pkl")
 
     do_generate = not os.access(tfile, os.F_OK)
 
     stage_1 = ksp.Stage()
-    stage_1.loadJSON(tname + "_stage1.json")
+    stage_1.loadJSON(ksp.pthut(tname + "_stage1.json"))
     stage_1.dumpInfo( )
 
     stage_2 = ksp.Stage()
-    stage_2.loadJSON(tname + "_stage2.json")
+    stage_2.loadJSON(ksp.pthut(tname + "_stage2.json"))
     stage_2.dumpInfo( )
     
     def fthrottle( t, y ) :
@@ -281,7 +269,7 @@ if __name__ == "__main__" :
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dvInterp with dvmap_kerbin_to_mun.json")
-    with open("dvmap_kerbin_to_mun.json", "rt") as f :
+    with open(ksp.pthex("dvmap_kerbin_to_mun.json"), "rt") as f :
         maneuvers = json.load(f)
     truth = 3671.3933492693336
     test = ksp.dvInterp( maneuvers )

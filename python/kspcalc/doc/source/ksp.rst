@@ -22,12 +22,12 @@ Setup
 Command Line Interface (CLI)
 ----------------------------
 Run the CLI with
-  ``$ python -m ksp <command> <args>``
+  ``$ ksp.py <command> <args>``
 
 Use the argparse help system to get more details.
-  ``$ python -m ksp -h``
+  ``$ ksp.py -h``
   
-  ``$ python -m ksp <command> -h``
+  ``$ ksp.py <command> -h``
 
 The current list of commands is:
 
@@ -63,3 +63,11 @@ API
 
 .. automodule:: ksp
    :members:
+
+Data Directory
+--------------
+
+The ``data`` directory holds various types of input files and
+databases.  Each subdirectory name indicates the contents.  The
+``ksp.py`` module features ``pth*()`` functions in the API that build
+absolute paths to locations in the data directory.

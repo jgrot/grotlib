@@ -238,6 +238,7 @@ class Interp1DFunctor( Functor ) :
 
     :param list xs: in values
     :param list ys: out values
+    :param string kind: ‘linear’|‘nearest’|‘nearest-up’|‘zero’|‘slinear’|‘quadratic’|‘cubic’|‘previous’|‘next’
     '''
     def __init__( self, xs, ys, kind="linear", bounds_error=False, fill_value=0.0 ) :
         rangemin = [xs[0]]

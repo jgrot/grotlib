@@ -11,7 +11,9 @@ KSPCalc
    :caption: Contents:
 
    ksp
-	     
+   drag_finder
+   optim_dd
+      
 Indices and tables
 ==================
 

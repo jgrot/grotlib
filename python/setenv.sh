@@ -28,3 +28,14 @@ if ! echo $PYTHONPATH | grep -q "$NEWPYTHONPATH"; then
 
     echo "PYTHONPATH HAS BEEN UPDATED TO $PYTHONPATH"
 fi
+
+if ! echo $PATH | grep -q "$NEWPYTHONPATH"; then
+    
+    if [ -z $PATH ]; then
+	export PATH=$NEWPYTHONPATH
+    else
+	export PATH=$PATH:$NEWPYTHONPATH
+    fi
+
+    echo "PATH HAS BEEN UPDATED TO $PATH"
+fi

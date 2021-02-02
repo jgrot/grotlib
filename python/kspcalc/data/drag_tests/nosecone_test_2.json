@@ -1,0 +1,5 @@
+{ "nosecone name" : "Aerodynamic Nose Cone",
+  "stage file"    : "nosecone_craft_2.json",
+  "htarget"       : 4596,
+  "crash time"    : 69.0
+}
