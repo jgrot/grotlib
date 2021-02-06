@@ -240,17 +240,23 @@ class Interp1DFunctor( Functor ) :
     :param list ys: out values
     :param string kind: ‘linear’|‘nearest’|‘nearest-up’|‘zero’|‘slinear’|‘quadratic’|‘cubic’|‘previous’|‘next’
     '''
-    def __init__( self, xs, ys, kind="linear", bounds_error=False, fill_value=0.0 ) :
+    def __init__( self, xs, ys, kind="linear", low_fill=0.0, high_fill=0.0 ) :
         rangemin = [xs[0]]
         rangemax = [xs[-1]]
-        
-        self.f = interp1d( xs, ys, kind=kind, bounds_error=bounds_error, fill_value=fill_value )
+        self.low_fill = low_fill
+        self.high_fill = high_fill
+
+        # Fill value is ignored by this class.
+        self.f = interp1d( xs, ys, kind=kind, bounds_error=False, fill_value=0.0 )
         super().__init__( rangemin, rangemax )
 
     def call( self, *X ) :
-        # Note: checkRange is not called here, since the interp1d
-        # range handling is used.
-        return [ self.f(X[0]) ]
+        if X[0] < self.rangemin[0] :
+            return [ self.low_fill ]
+        elif X[0] > self.rangemax[0] :
+            return [ self.high_fill ]
+        else :
+            return [ self.f(X[0]) ]
 
     def nDep( self ) :
         return 1

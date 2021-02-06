@@ -138,6 +138,14 @@ engine_db = {
         "ispsl"  : (175, "s"), # Isp at sea level
         "ispvac" : (210, "s")  # Isp at vacuum
     },
+    "F3S0" : {
+        "model"  : "F3S0",
+        "name"   : "Shrimp",
+        "rate"   : (1.897, "su"), # Per second (found under Propellant)
+        "amount" : (90, "su"),
+        "ispsl"  : (190, "s"), # Isp at sea level
+        "ispvac" : (215, "s")  # Isp at vacuum
+    },
     "S2-17" : {
         "model"  : "S2-17",
         "name"   : "Thoroghbred",
@@ -232,6 +240,9 @@ template_maneuvers = [
 
 class DragDivergence( functor.Functor ) :
     # Original defaults by eye - looking at graphs on the internet: 1.0, 80.0, 0.15
+    # 2.98903399 14.56279572 0.12133894 anc  test
+    # 3.29937834 11.29413372 0.09386697 ancA test
+    # 3.11236594  5.35477702 0.12315374 chj3 test
     def __init__( self, cpeak=2.98903399, cdiv=14.56279572, ctail=0.12133894 ) :
         rangemin = [0.0]
         rangemax = [20.0]
@@ -259,6 +270,7 @@ class DragDivergence( functor.Functor ) :
             y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - tr, 2.0) )
             # y= 1.0 + self.c0*math.exp( - self.c2*(M - tr) )
             # y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - tr, 2.0) )
+        # print("C0 = %s C1 = %s C2 = %s M = %s DD = %s" % (self.c0, self.c1, selM, y))
         return [y]
         
     def nDep( self ) :
@@ -871,7 +883,7 @@ def processBodyDbs( ) :
 
             bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
             bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
-            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", fill_value = snd[0] )
+            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
 
 def interp2Dtraj( t, solnt, soln ) :
     '''Utility function for makePolarMotionSolver.
@@ -1444,6 +1456,8 @@ def main() :
 
     args = parser.parse_args()
 
+    print ( dd.call(7.259003981175488e-05) )
+    
     if args.command == "craft" :
 
         if not os.access( args.fpath, os.F_OK ) :

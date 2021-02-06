@@ -4,7 +4,8 @@
 import argparse
 import json
 import math
-from scipy.optimize import minimize
+from scipy.optimize import minimize, Bounds
+import numpy as np
 
 import ksp
 from ksp import DragDivergence
@@ -63,6 +64,14 @@ if __name__ == "__main__" :
         def trial( X ) :
             global itrial
 
+            if X[0] < 1.0 or \
+               X[0] > 4.0 or \
+               X[1] < 5.0 or \
+               X[1] > 200.0 or \
+               X[2] < 0.01 or \
+               X[2] > 100.0 :
+               return math.inf
+            
             ksp.dd = DragDivergence(X[0], X[1], X[2])
             
             flyer.launch( )

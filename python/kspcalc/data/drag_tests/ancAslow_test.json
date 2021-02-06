@@ -1,0 +1,6 @@
+{ "nosecone name" : "Aerodynamic Nose Cone - Type A",
+  "stage file"    : "ancAslow_stage.json",
+  "htarget"       : 2262,
+  "crash time"    : 45,
+  "throttle"      : 0.5
+}

@@ -1,0 +1,6 @@
+{ "nosecone name" : "CHJ3 Guidance Fly By Wire Hub",
+  "stage file"    : "chj3slow_stage.json",
+  "htarget"       : 5694,
+  "crash time"    : 75,
+  "throttle"      : 0.8
+}
