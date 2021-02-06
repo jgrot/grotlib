@@ -232,7 +232,7 @@ template_maneuvers = [
 
 class DragDivergence( functor.Functor ) :
     # Original defaults by eye - looking at graphs on the internet: 1.0, 80.0, 0.15
-    def __init__( self, cpeak=1.62612683, cdiv=57.3766437, ctail=0.09491543 ) :
+    def __init__( self, cpeak=2.98903399, cdiv=14.56279572, ctail=0.12133894 ) :
         rangemin = [0.0]
         rangemax = [20.0]
         
@@ -248,12 +248,17 @@ class DragDivergence( functor.Functor ) :
         self.c2 = ctail
 
     def call( self, *X ) :
+        tr = 1.0
+        
         self.checkRange( X )
+        
         M = X[0]
-        if M <= 1.0 :
-            y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - 1.0, 2.0) )
+        if M <= tr :
+            y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - tr, 2.0) )
         else :
-            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
+            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - tr, 2.0) )
+            # y= 1.0 + self.c0*math.exp( - self.c2*(M - tr) )
+            # y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - tr, 2.0) )
         return [y]
         
     def nDep( self ) :
@@ -539,8 +544,9 @@ class FlyingStage :
         self.R = R*uconv(dist_db, Ru, "m")
 
         self.fpress = self.body["fpress"]
-        self.fdens = self.body["fdens"]
-
+        self.fdens  = self.body["fdens"]
+        self.fsnd   = self.body["fsnd"]
+ 
         # Body rotational period
         tday, tday_u = self.body["tday"]
         tday_s = tday * uconv( time_db, tday_u, "s" )
@@ -559,7 +565,7 @@ class FlyingStage :
         vthb = r*omb
         
         v = math.sqrt(vr*vr + vthb*vthb)
-        M = v/343.0
+        M = v/self.fsnd.call(alt)[0]
         
         return ( ( self._thrust(t, y) * math.sin( self.falpha(t, y, self) ) / m )
                  - self.GM/(r*r) - self.stage.dragco * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
@@ -570,15 +576,15 @@ class FlyingStage :
         :param float t: trajectory time
         :param list y: solver dependent values array (See makePolarMotionSolver)
         '''
-        
         m, r, th, vr, om = y
-
+        alt = r - self.R
+        
         # Body relative theta motion for drag.  R motion is the same.
         omb = om - self.body_omega
         vthb = r*omb
 
         v = math.sqrt(vr*vr + vthb*vthb)
-        M = v/343.0
+        M = v/self.fsnd.call(alt)[0]
                 
         vth = r*om
         alt = r - self.R
@@ -861,9 +867,11 @@ def processBodyDbs( ) :
             alts, ps, ts = zip( *bodyrec["apt"] )
 
             dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
+            snd  = [ math.sqrt(142E3 / di) for di in dens ]
 
             bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
             bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
+            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", fill_value = snd[0] )
 
 def interp2Dtraj( t, solnt, soln ) :
     '''Utility function for makePolarMotionSolver.
@@ -1559,6 +1567,12 @@ def main() :
         ax3.set_title("Kerbin Pressure")
         ax3.set_xlabel("Altitude (m)")
         ax3.set_ylabel("Pressure (Pa)")
+
+        fig4, ax4 = plt.subplots()
+        bodies_db["Kerbin"]["fsnd"].plot( ax4, [True] )
+        ax4.set_title("Kerbin Sound Speed")
+        ax4.set_xlabel("Altitude (m)")
+        ax4.set_ylabel("Sound Speed (m/s)")
         
         plt.show()
                 

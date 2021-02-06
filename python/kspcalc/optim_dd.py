@@ -73,13 +73,13 @@ if __name__ == "__main__" :
             z1 = hmax - htarget
             z2 = flyer.solnt[-1] - crash_time
 
-            print( "iter: %4i, herr: %10.4e, terr: %10.2f" % (itrial, z1, z2) )
+            print( "iter: %4i, c0: %10.4f, c1: %10.4f, c2: %10.4f, herr: %10.4e, terr: %10.2f" % (itrial, X[0], X[1], X[2], z1, z2) )
             itrial += 1
             
             return ( z1*z1 + z2*z2 )
 
         # Initial drag divergence coefficients
-        x0 = [1.0, 80.0, 0.15]
+        x0 = [2.0, 80.0, 0.1]
         
         result = minimize(trial, x0, method="Nelder-Mead", options={"maxiter":1000})
 

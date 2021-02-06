@@ -42,8 +42,6 @@ if __name__ == "__main__" :
 
     if args.command == "test" :
 
-        ksp.dd = ksp.DragDivergence(0.99998138, 79.96128745, 0.14998027)
-        
         case_data = None
         with open( args.case_file, "rt" ) as f :
             case_data = json.load( f )
