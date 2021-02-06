@@ -71,3 +71,11 @@ The ``data`` directory holds various types of input files and
 databases.  Each subdirectory name indicates the contents.  The
 ``ksp.py`` module features ``pth*()`` functions in the API that build
 absolute paths to locations in the data directory.
+
+Physical Quantities and Units Databases
+---------------------------------------
+
+Unless units are explicitly specified for a quantity input, the format
+will (in general) be a tuple or list of the form ``( <value>, "<name
+of unit>" )``.  Please consult the various units databases in the ``#
+Databases for uconv()`` section of ``ksp.py``.
