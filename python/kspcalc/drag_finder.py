@@ -8,8 +8,6 @@ from scipy.optimize import minimize
 
 import ksp
 
-def fthrottle( t, y ) :
-    return 1.0
 def falpha( t, y, flyer ) :
     return 0.5 * math.pi
 
@@ -34,6 +32,7 @@ if __name__ == "__main__" :
 
     cmd_test = subparsers.add_parser("test", help="Run the test")
     cmd_test.add_argument("case_file", help="Name of the case file")
+    cmd_test.add_argument("--throttle", default=1.0, type=float, help="Throttle (default = 1.0)")
 
     args = parser.parse_args()
     
@@ -44,6 +43,9 @@ if __name__ == "__main__" :
 
     if args.command == "test" :
 
+        def fthrottle( t, y ) :
+            return args.throttle
+        
         ksp.dd = ksp.DragDivergence(0.99998138, 79.96128745, 0.14998027)
         
         case_data = None

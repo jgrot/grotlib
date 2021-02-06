@@ -231,7 +231,8 @@ template_maneuvers = [
 
 
 class DragDivergence( functor.Functor ) :
-    def __init__( self, cpeak=1.0, cdiv=80.0, ctail=0.15 ) :
+    # Original defaults by eye - looking at graphs on the internet: 1.0, 80.0, 0.15
+    def __init__( self, cpeak=1.62612683, cdiv=57.3766437, ctail=0.09491543 ) :
         
         rangemin = [0.0]
         rangemax = [20.0]
@@ -295,11 +296,21 @@ class Stage :
         engines_by_t_burn = []
 
         for eng_rec in self.engines :
-            
-            n_eng, ename = eng_rec
+
+            if len(eng_rec) == 3 :
+                n_eng, ename, fuel_mass = eng_rec
+            elif len(eng_rec) == 2 :
+                n_eng, ename = eng_rec
+                fuel_mass = None
+
             engine = engine_db[ename]
-            
-            mfuel, mfuelu = engine["amount"]
+
+            if fuel_mass is None:
+                # Get from database
+                mfuel, mfuelu = engine["amount"]
+            else :
+                mfuel, mfuelu = fuel_mass
+                
             mfuel_kg = mfuel * uconv( mass_db, mfuelu, "kg" )
 
             rate, rateu = engine["rate"]
@@ -729,8 +740,8 @@ class FlyingStage :
             raise Exception("Cannot set both y0 and sm1")
         
         if y0 is None and sm1 is None :
-            # When nothing is specified, stage is launched from ground.
-            y0 = [ self.stage.m0_kg, self.R, 0.0, 0.0, self.body_omega ]
+            # When nothing is specified, stage is launched from Kerbin base.
+            y0 = [ self.stage.m0_kg, self.R+71.0, 0.0, 0.0, self.body_omega ]
 
         elif sm1 is not None :
             if t0 is None :

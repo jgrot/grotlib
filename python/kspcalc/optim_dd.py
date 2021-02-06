@@ -52,7 +52,7 @@ if __name__ == "__main__" :
             case_data = json.load( f )
 
         stage = ksp.Stage( )
-        stage.loadJSON( ksp.pthdat("nosecone_tests/" + case_data["stage file"]) )            
+        stage.loadJSON( ksp.pthdat("drag_tests/" + case_data["stage file"]) )
         flyer = ksp.FlyingStage( stage, "stage", "Kerbin", fthrottle, falpha )
 
         htarget = case_data["htarget"]
@@ -84,7 +84,7 @@ if __name__ == "__main__" :
 
         print(result.x)
     
-    # fig, ax = plt.subplots()
-    # dd = DragDivergence( *result.x )
-    # dd.plot( ax, [(0,4)] )
-    # plt.show()
+    fig, ax = plt.subplots()
+    dd = DragDivergence( *result.x )
+    dd.plot( ax, [(0,4)], resolution=[1000] )
+    plt.show()
