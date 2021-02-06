@@ -9,8 +9,6 @@ from scipy.optimize import minimize
 import ksp
 from ksp import DragDivergence
 
-def fthrottle( t, y ) :
-    return 1.0
 def falpha( t, y, flyer ) :
     return 0.5 * math.pi
 
@@ -50,6 +48,9 @@ if __name__ == "__main__" :
         case_data = None
         with open( args.case_file, "rt" ) as f :
             case_data = json.load( f )
+
+        def fthrottle( t, y ) :
+            return case_data["throttle"]
 
         stage = ksp.Stage( )
         stage.loadJSON( ksp.pthdat("drag_tests/" + case_data["stage file"]) )

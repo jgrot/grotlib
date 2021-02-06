@@ -233,7 +233,6 @@ template_maneuvers = [
 class DragDivergence( functor.Functor ) :
     # Original defaults by eye - looking at graphs on the internet: 1.0, 80.0, 0.15
     def __init__( self, cpeak=1.62612683, cdiv=57.3766437, ctail=0.09491543 ) :
-        
         rangemin = [0.0]
         rangemax = [20.0]
         
