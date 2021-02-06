@@ -1456,8 +1456,6 @@ def main() :
 
     args = parser.parse_args()
 
-    print ( dd.call(7.259003981175488e-05) )
-    
     if args.command == "craft" :
 
         if not os.access( args.fpath, os.F_OK ) :

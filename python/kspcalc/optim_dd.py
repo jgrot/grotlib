@@ -4,8 +4,7 @@
 import argparse
 import json
 import math
-from scipy.optimize import minimize, Bounds
-import numpy as np
+from scipy.optimize import minimize
 
 import ksp
 from ksp import DragDivergence
