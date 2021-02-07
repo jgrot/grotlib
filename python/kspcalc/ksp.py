@@ -246,30 +246,20 @@ class DragDivergence( functor.Functor ) :
         
         super().__init__( rangemin, rangemax )
 
-        # Divergence peak
-        self.c0 = c0
-        
-        # Divergence coeff
-        self.c1 = c1
-        
-        # Tail coeff
-        self.c2 = c2
+        # Formula parameters
+        self.c0 = c0 # Currently, like amplitude
+        self.c1 = c1 # Currently, like sharpness
+        self.c2 = c2 # Currently, like divergence Mach number
 
     def call( self, *X ) :
-        tr = 1.0
-        
         self.checkRange( X )
 
-        # B=self.c0*math.exp(-self.c1*math.pow(tr-1.0, 2.0))*math.pow(tr-1.0,self.c2)
-        
         M = X[0]
-        if True :
-            # 3.20540819 10.11003808  0.64473092 chj3
-            # 3.01128474  9.92764216  0.73508828 ancA
-            # 2.85659979  9.48884985  0.77361743 anc
-            y = 1.0 + self.c0*0.5*(1.0 + math.tanh( self.c1*(M - self.c2) ))
-        else :
-            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
+
+        # 3.20540819 10.11003808  0.64473092 chj3
+        # 3.01128474  9.92764216  0.73508828 ancA
+        # 2.85659979  9.48884985  0.77361743 anc
+        y = 1.0 + self.c0*0.5*(1.0 + math.tanh( self.c1*(M - self.c2) ))
 
         # print("C0 = %s C1 = %s C2 = %s M = %s DD = %s" % (self.c0, self.c1, self.c2, M, y))
         return [y]

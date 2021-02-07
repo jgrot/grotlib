@@ -18,5 +18,3 @@ The current list of commands is:
 
 **test**
   Runs the drag finder test.
-
-

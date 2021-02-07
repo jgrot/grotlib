@@ -14,10 +14,10 @@ def falpha( t, y, flyer ) :
 
 instructions = [
     "Drag Divergence Optimizer",
-    "Create a missile and estimate the drag term using nosecone_drag.py",
-    "Make sure the most recent drag term is stored with the stage",
-    "Specify the corresponding nosecone test file (e.g. nosecone_test.json)",
-    "Run the test subcommand optmize the drag divergence function."
+    "Create a missile and estimate the (slow) drag term using drag_finder.py",
+    "Store the (slow) drag term in the stage file",
+    "Fly the same missile high and fast and record results in a test file",
+    "Run the test subcommand to find drag divergence parameters"
 ]
 
 if __name__ == "__main__" :
