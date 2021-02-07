@@ -61,7 +61,7 @@ the slow speed drag modifier (i.e. don't modify).
 To find the c-terms, obtain the slow speed drag term (see
 :doc:`drag_finder`).  Then run an experiment the same way as in
 :doc:`drag_finder` but fast and high.  You will probably just go with
-the default fuel amount and full throttle.  Here are examples files
+the default fuel amount and full throttle.  Here are example files
 and commands:
 
 ancAfast_test.json::
