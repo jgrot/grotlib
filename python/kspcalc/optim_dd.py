@@ -64,7 +64,7 @@ if __name__ == "__main__" :
             global itrial
 
             if X[0] < 1.0 or \
-               X[0] > 4.0 or \
+               X[0] > 10.0 or \
                X[1] < 5.0 or \
                X[1] > 200.0 or \
                X[2] < 0.01 or \
@@ -74,8 +74,11 @@ if __name__ == "__main__" :
             ksp.dd = DragDivergence(X[0], X[1], X[2])
             
             flyer.launch( )
-            flyer.flyTo(30000)
-            
+            try :
+                flyer.flyTo(30000)
+            except :
+                return math.inf
+                
             hmax = flyer.maxr - flyer.R
 
             z1 = hmax - htarget
@@ -87,9 +90,9 @@ if __name__ == "__main__" :
             return ( z1*z1 + z2*z2 )
 
         # Initial drag divergence coefficients
-        x0 = [2.0, 80.0, 0.1]
+        x0 = [3.0, 10.0, 0.7]
         
-        result = minimize(trial, x0, method="Nelder-Mead", options={"maxiter":1000})
+        result = minimize(trial, x0, method="Nelder-Mead", options={"maxiter":100})
 
         print(result.x)
     

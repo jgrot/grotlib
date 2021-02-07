@@ -239,38 +239,39 @@ template_maneuvers = [
 
 
 class DragDivergence( functor.Functor ) :
-    # Original defaults by eye - looking at graphs on the internet: 1.0, 80.0, 0.15
-    # 2.98903399 14.56279572 0.12133894 anc  test
-    # 3.29937834 11.29413372 0.09386697 ancA test
-    # 3.11236594  5.35477702 0.12315374 chj3 test
-    def __init__( self, cpeak=2.98903399, cdiv=14.56279572, ctail=0.12133894 ) :
+
+    def __init__( self, c0=3.0, c1=10.0, c2=0.71 ) :
         rangemin = [0.0]
         rangemax = [20.0]
         
         super().__init__( rangemin, rangemax )
 
         # Divergence peak
-        self.c0 = cpeak
+        self.c0 = c0
         
         # Divergence coeff
-        self.c1 = cdiv
+        self.c1 = c1
         
         # Tail coeff
-        self.c2 = ctail
+        self.c2 = c2
 
     def call( self, *X ) :
         tr = 1.0
         
         self.checkRange( X )
+
+        # B=self.c0*math.exp(-self.c1*math.pow(tr-1.0, 2.0))*math.pow(tr-1.0,self.c2)
         
         M = X[0]
-        if M <= tr :
-            y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - tr, 2.0) )
+        if True :
+            # 3.20540819 10.11003808  0.64473092 chj3
+            # 3.01128474  9.92764216  0.73508828 ancA
+            # 2.85659979  9.48884985  0.77361743 anc
+            y = 1.0 + self.c0*0.5*(1.0 + math.tanh( self.c1*(M - self.c2) ))
         else :
-            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - tr, 2.0) )
-            # y= 1.0 + self.c0*math.exp( - self.c2*(M - tr) )
-            # y = 1.0 + self.c0*math.exp( -self.c1*math.pow(M - tr, 2.0) )
-        # print("C0 = %s C1 = %s C2 = %s M = %s DD = %s" % (self.c0, self.c1, selM, y))
+            y= 1.0 + self.c0*math.exp( -self.c2*math.pow(M - 1.0, 2.0) )
+
+        # print("C0 = %s C1 = %s C2 = %s M = %s DD = %s" % (self.c0, self.c1, self.c2, M, y))
         return [y]
         
     def nDep( self ) :
@@ -1608,6 +1609,12 @@ def main() :
         else :
             print("Could not convert %f %s" % (value, unit) )
 
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    fig1, ax1 = plt.subplots()
+    dd.plot(ax1, [[0,2]])
+    plt.show()
 
 if __name__ == "__main__" :
     main()
