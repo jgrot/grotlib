@@ -1023,8 +1023,8 @@ class FlyingStage :
         fig, ax = plt.subplots()
         mpt.square_plot(ax, x, y, marker = "o")
 
-        mpt.plot_circle(ax, R, 100)
-        mpt.plot_circle(ax, R+70E3, 100)
+        mpt.plot_circle(ax, self.R, 100)
+        mpt.plot_circle(ax, self.R+70E3, 100)
 
         plt.show()
 
