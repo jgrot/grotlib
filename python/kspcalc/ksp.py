@@ -15,6 +15,7 @@ import tabulate
 
 # Grotlib modules
 import functor
+import mpl_tools as mpt
 
 # Verify Python version
 if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
@@ -22,6 +23,10 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
     sys.stderr.write("*** Wrong python version.  Make sure virtual environment is activated.\n")
     exit(1)
 
+#
+# KSP Calc Paths
+#
+    
 KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
 KSPDBDIR = os.path.join( KSPCALCDIR, "data/databases" )
 KSPEXAMPLESDIR = os.path.join( KSPCALCDIR, "data/examples" )
@@ -46,7 +51,17 @@ def pthut( filename ) :
     '''
     return os.path.join( KSPUTDIR, filename )
 
+#
+# Angle Tools
+#
 
+def homeAngle( angle ) :
+    ''' Takes an angle of any value and resets to -pi <= angle <= pi
+    :param float angle: radians
+    '''
+    x = math.cos(angle)
+    y = math.sin(angle)
+    return math.atan2( y, x )
 
 #
 # Constants
@@ -57,9 +72,10 @@ C_air_mol_mass = 28.84E-3 # kg/mol
 C_p0 = 100174.2           # Pa (ground pressure on Kerbin)
 
 #
-# Solar system data
+# Databases
 #
 
+# Solar System Data
 bodies_db = {
     "Kerbin" : {
         "GM" : (3.53E12, "m3/s2"),
@@ -80,10 +96,7 @@ bodies_db = {
     }
 }
 
-#
 # Databases for uconv()
-#
-
 angle_db = {
     # Number of radians in angle unit
     "radians" : 1.0,
@@ -125,10 +138,7 @@ time_db = {
 
 udbs = [ angle_db, dist_db, force_db, isp_db, mass_db, time_db ]
 
-#
-# KSP Parts databases 
-#
-
+# KSP Parts Databases 
 engine_db = {
     "BACC" : {
         "model"  : "BACC",
@@ -176,67 +186,36 @@ nosecone_db = {
     
 }
 
+def augmentBodyDbs( ) :
+    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
+    
+    for body_key in bodies_db :
+        fname = pthdb( "%s.json" % body_key )
+        exists = os.access( fname, os.F_OK )
+        if exists :
+            with open( fname, 'rt' ) as f :
+                extra_dat = json.load(f)
+                bodies_db[body_key].update( extra_dat )
+
+def processBodyDbs( ) :
+    '''Pre-processes bodies_db data.
+    '''
+    
+    for body_key in bodies_db :
+        bodyrec = bodies_db[body_key]
+        if "apt" in bodyrec :
+            alts, ps, ts = zip( *bodyrec["apt"] )
+
+            dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
+            snd  = [ math.sqrt(142E3 / di) for di in dens ]
+
+            bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
+            bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
+            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
+
 #
-# Prototype code
+# Drag Divergence
 #
-
-template_craft = [
-    ( "rocket", {
-        "name" : "Templ 1",
-        "stages" : [
-            {
-	        "m0" : (0,"t"),
-	        "m"  : (0,"t"),
-	        "T"  : (0,"kN"),
-	        "Isp" : (0, "s")
-            },
-        ]
-    }
-    )
-]
-
-template_maneuvers = [
-    {
-        "type"  : "launch",
-        "desc"  : "Launch from Kerbin to circular orbit",
-	"body"  : "Kerbin",
-	"orbit" : [100,"km"]
-    },
-        {
-	"type" : "hperi",
-        "desc" : "Extend orbit to the Mun",
-	"body" : "Kerbin",
-	"peri" : [100,"km"],
-	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
-    },
-    {
-        "type"  : "launch",
-        "desc"  : "Land on Mun",
-	"body"  : "Mun",
-	"orbit" : [100,"km"]
-    },
-    {
-        "type"  : "launch",
-        "desc"  : "Launch from Mun",
-	"body"  : "Mun",
-	"orbit" : [100,"km"]
-    },
-    {
-	"type" : "hapo",
-        "desc" : "Pull orbit into Kerbin",
-	"body" : "Kerbin",
-	"peri" : [45,"km"],
-	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
-    },
-    {
-	"type" : "hperi",
-        "desc" : "Reduce orbital energy",
-	"body" : "Kerbin",
-	"peri" : [45,"km"],
-	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
-    },
-]
-
 
 class DragDivergence( functor.Functor ) :
 
@@ -270,9 +249,227 @@ class DragDivergence( functor.Functor ) :
 dd = DragDivergence()
 
 #
-# Stage and FlyingStage classes used to model craft for
-# makePolarMotionSolver.
+# Trajectories and Orbits
 #
+
+class Orbit :
+    '''Parameterized orbit under a gravitational force initialized by a
+       trajectory point anywhere along the orbit.
+
+    Parameterizes by "phi" such that phi=0 is at the periapsis.
+
+    self.phi0 represents phi at the initialization point.
+
+    :param list y: makePolarMotionSolver variables [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
+    :param float GM: body GM
+
+    Some orbit equations:
+
+    .. math::
+
+       k = G M m
+
+       h = r^2 \omega = r v_{\phi} = r_0 v_0 = r_1 v_1
+
+       E = { m v^2 \over 2 } - { k \over r } = \mathit{const}
+
+       e = \sqrt{1 + 2Emh^2k^{-2}}
+
+       r_0 = { mh^2 \over { k(1+e) } }
+
+       r = r_0 { {1+e} \over { 1 + e \cos \phi } }
+
+       \phi_0 = \mathrm{arccos} \\left ( { 1 \over e} \\left ( {r_0 \over r} (1+e) - 1 \\right ) \\right ); \: \mathrm{if} \: \dot{r} < 0, \; \phi_0 \leftarrow 2\pi - \phi_0
+
+       \\tau = 2 \pi \\left( {m \over k} \\right)^{1/2} a^{3/2}
+
+       a = { {m h^2} \over { k(1-e^2) } }
+ 
+       {d\phi \over dt } = h \\left( { 1 + e\cos \phi } \over { r_0 (1+e) } \\right) ^2 = A(1+e\cos\phi)^2; \: A= { h \over { ( r_0(1+e) )^2 } }
+
+    '''
+
+    ORB_CIRCLE = 0
+    ORB_ELLIPSE = 1
+    ORB_PARABOLA = 2
+    ORB_HYPERBOLA = 3
+    ORB_ORBITS = ( 'circle', 'ellipse', 'parabola', 'hyperbola' )
+    
+    def __init__(self, y, GM, force=None) :
+        
+        m, r, th, vr, om = y
+
+        if force is not None :
+            if force == "circle" :
+                om = math.sqrt(GM/r)/r
+                vr = 0.0
+            elif force == "parabola" :
+                om = math.sqrt(2.0*GM/r)/r
+                vr = 0.0
+
+        k = GM*m
+        h = r*r*om
+        vsq = vr*vr + h*om
+        E = 0.5*m*vsq - (k/r)
+        e = math.sqrt(1.0 + 2.0*E*m*h*h/(k*k))
+        r0 = m*h*h/(k*(1.0 + e))
+        if e < 1.0 :
+            r1 = (1.0 + e)/(1.0 - e)
+        else :
+            r1 = math.inf
+        
+        self.m = m
+        self.k = k
+        self.h = h
+        self.E = E
+        self.e = e
+        self.r0 = r0
+        self.r1 = r1
+
+        if e > 0.0 :
+            # Not a circle
+            x1 = 1.0 / e
+            x2 = (r0/r)*(1.0 + e)
+            x3 = x1*(x2 - 1.0)
+            if x3 >= 1.0 :
+                phi0 = 0.0
+            elif x3 <= -1.0 :
+                phi0 = -math.pi
+            else :
+                phi0 = math.acos(x3)
+                if vr < 0.0 :
+                    phi0 = 2.0*math.pi - phi0
+            
+            self.phi0 = phi0
+        else :
+            # Circle
+            self.phi0 = 0.0
+
+        # Set up time integrator for phi.  Works for all orbits.
+            
+        A = h / math.pow(r0*(1.0 + e), 2.0)
+
+        def f(t, y) :
+            x1 = 1.0 + e*math.cos(y[0])
+            ans = A*x1*x1
+            return [ ans ]
+
+        solv = ode(f).set_integrator("vode", method="adams")
+
+        orbtype = self.classify()
+        
+        if orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
+            
+            solv.set_initial_value( 0.0, 0.0 )
+
+            self.phivt = [ [0.0] ]
+            self.solnt = [ 0.0 ]
+
+            dt = 0.1
+            phi = 0.0
+            
+            while solv.successful() and phi < 2.0*math.pi :
+                phi = solv.integrate( solv.t + dt )
+
+                self.phivt.append( list(phi) )
+                self.solnt.append( solv.t )
+                
+        elif orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
+            
+            self.phi_max = math.acos(-1.0/self.e)
+            self.phi_min = -self.phi_max
+
+            solv.set_initial_value( self.phi0, 0.0 )
+
+            self.phivt = [ [self.phi0] ]
+            self.solnt = [ 0.0 ]
+
+            dt = 0.1
+            phi = 0.0
+            
+            while solv.successful() and solv.t < 1000.0 :
+                phi = solv.integrate( solv.t + dt )
+
+                self.phivt.append( list(phi) )
+                self.solnt.append( solv.t )
+
+    def classify( self ) :
+        if self.e < 0 :
+            raise Exception("Logic error: e < 0")
+        if self.e == 0 :
+            return self.ORB_CIRCLE
+        if self.e < 1 :
+            return self.ORB_ELLIPSE
+        if self.e == 1 :
+            return self.ORB_PARABOLA
+        return self.ORB_HYPERBOLA
+        
+    def plot(self, use_t=False, Rbody=None) :
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        
+        orbtype = self.classify()
+        
+        if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
+            if use_t :
+                phi_of_t = lambda t: interp2Dtraj(t, self.solnt, self.phivt)[0]
+                r_of_t = lambda t : self.y_phi( phi_of_t(t) )[1]
+                dt = self.solnt[-1]/100.0
+                maxt = 99.0*dt
+                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
+            else :
+                phi_of_phi = None
+                r_of_phi = lambda phi: self.y_phi(phi)[1]
+                maxphi = 0.9*self.phi_max
+                dphi = (maxphi - self.phi0)/100.0
+                mpt.plot_polar(ax, r_of_phi, phi_of_phi, self.phi0, dphi, maxphi, centered=True, marker="o")
+                
+        elif orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
+            if use_t :
+                phi_of_t = lambda t: interp2Dtraj(t, self.solnt, self.phivt)[0]
+                r_of_t = lambda t : self.y_phi( phi_of_t(t) )[1]
+                dt = self.solnt[-1]/100.0
+                maxt = 99.0*dt
+                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
+            else :
+                phi_of_phi = None
+                r_of_phi = lambda phi: self.y_phi(phi)[1]
+                dphi = 2.0*math.pi/100.0
+                maxphi = dphi*99.0
+                mpt.plot_polar(ax, r_of_phi, phi_of_phi, 0.0, dphi, maxphi, centered=True, marker="o")
+
+        if Rbody is not None :
+            mpt.plot_circle(ax, Rbody, 100)
+            
+        plt.show()
+
+    def y_phi( self, phi ) :
+        '''Returns a polar motion state vector.
+        '''
+        
+        num = self.r0*(1.0 + self.e)
+        denom = 1.0 + self.e*math.cos(phi)
+        r = num / denom
+
+        vphi = self.h / r
+        om = vphi / r
+        
+        vsq = (2.0/self.m) * (self.E + self.k/r)
+
+        vrsq = vsq - vphi*vphi
+
+        if vrsq < 0.0 :
+            print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq)
+            vrsq = 0.0
+        
+        vr = math.sqrt( vrsq )
+
+        if phi > math.pi :
+            vr = -vr
+        
+        return [ self.m, r, phi, vr, om ]
 
 class Stage :
     '''Model of an isolated stage.
@@ -714,6 +911,9 @@ class FlyingStage :
             if not self.crashed :
                 while self.solv.successful() and t >= self.solv.t:
                     y = self.solv.integrate( self.solv.t + dt )
+                    
+                    
+                    
                     if y[1] <= self.R : ## y[1] := r
                         self.crashed = True
                         break
@@ -784,7 +984,7 @@ class FlyingStage :
         :param float dt: time interval between dumped trajectory
                          points.  Default is 5.0 seconds.
         '''
-
+        
         import matplotlib
         import matplotlib.pyplot as plt
 
@@ -805,89 +1005,29 @@ class FlyingStage :
             x.append( r * math.cos( th ) )
             y.append( r * math.sin( th ) )
             t += dt
-
-        xb = [ min(x), max(x) ]
-        yb = [ min(y), max(y) ]
-
-        xrng = xb[1] - xb[0]
-        yrng = yb[1] - yb[0]
-
-        maxrng = max( xrng, yrng )
-
-        xpad = 0.5*(maxrng - xrng)
-        ypad = 0.5*(maxrng - yrng)
-
-        xmin = xb[0] - xpad
-        xmax = xb[1] + xpad
-        ymin = yb[0] - ypad
-        ymax = yb[1] + ypad
-
+            
         fig, ax = plt.subplots()
-        ax.set_xlim( xmin, xmax )
-        ax.set_ylim( ymin, ymax )
-        ax.set_aspect(1.0)
-        ax.plot(x, y, marker = "o")
+        mpt.square_plot(ax, x, y, marker = "o")
 
-        Nth = 100
-        dth = 2.0*math.pi / float(Nth - 1)
-
-        x = []
-        y = []
-        for ith in range(Nth) :
-            th = dth * ith
-            x.append(self.R*math.cos(th))
-            y.append(self.R*math.sin(th))
-        ax.plot(x, y)
-
-        x = []
-        y = []
-        for ith in range(Nth) :
-            th = dth * ith
-            x.append((self.R+70E3)*math.cos(th))
-            y.append((self.R+70E3)*math.sin(th))
-        ax.plot(x, y)
+        mpt.plot_circle(ax, R, 100)
+        mpt.plot_circle(ax, R+70E3, 100)
 
         plt.show()
 
-def augmentBodyDbs( ) :
-    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
-    
-    for body_key in bodies_db :
-        fname = pthdb( "%s.json" % body_key )
-        exists = os.access( fname, os.F_OK )
-        if exists :
-            with open( fname, 'rt' ) as f :
-                extra_dat = json.load(f)
-                bodies_db[body_key].update( extra_dat )
-
-def processBodyDbs( ) :
-    '''Pre-processes bodies_db data.
-    '''
-    
-    for body_key in bodies_db :
-        bodyrec = bodies_db[body_key]
-        if "apt" in bodyrec :
-            alts, ps, ts = zip( *bodyrec["apt"] )
-
-            dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
-            snd  = [ math.sqrt(142E3 / di) for di in dens ]
-
-            bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
-            bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
-            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
-
 def interp2Dtraj( t, solnt, soln ) :
-    '''Utility function for makePolarMotionSolver.
+    '''Utility function for interpolating traj solutions vs t.
     
     :param float t: query time of point along trajectory
     :param list solnt: array of times corresponding to each element of soln.
-    :param list soln: array of makePolarMotionSolver y.
+    :param list soln: array of traj points (any dimensionality).
 
     :Rationale: bisect is used in case a non-uniform time interval is used.
     :TODO: consider using the scipy interpolator.
     '''
     
     i = (bisect.bisect( solnt, t ) - 1)
+    if i == len(solnt)-1 :
+        return soln[-1]
     t0 = solnt[i]
     t1 = solnt[i+1]
     a = (t - t0)/(t1 - t0)
@@ -927,6 +1067,67 @@ def makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 ) :
     solv.set_initial_value( y0, t0 )
 
     return solv
+
+#
+# Prototype Code
+#
+
+template_craft = [
+    ( "rocket", {
+        "name" : "Templ 1",
+        "stages" : [
+            {
+	        "m0" : (0,"t"),
+	        "m"  : (0,"t"),
+	        "T"  : (0,"kN"),
+	        "Isp" : (0, "s")
+            },
+        ]
+    }
+    )
+]
+
+template_maneuvers = [
+    {
+        "type"  : "launch",
+        "desc"  : "Launch from Kerbin to circular orbit",
+	"body"  : "Kerbin",
+	"orbit" : [100,"km"]
+    },
+        {
+	"type" : "hperi",
+        "desc" : "Extend orbit to the Mun",
+	"body" : "Kerbin",
+	"peri" : [100,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+        "type"  : "launch",
+        "desc"  : "Land on Mun",
+	"body"  : "Mun",
+	"orbit" : [100,"km"]
+    },
+    {
+        "type"  : "launch",
+        "desc"  : "Launch from Mun",
+	"body"  : "Mun",
+	"orbit" : [100,"km"]
+    },
+    {
+	"type" : "hapo",
+        "desc" : "Pull orbit into Kerbin",
+	"body" : "Kerbin",
+	"peri" : [45,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+    {
+	"type" : "hperi",
+        "desc" : "Reduce orbital energy",
+	"body" : "Kerbin",
+	"peri" : [45,"km"],
+	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
+    },
+]
 
 def analyzeRocket(rocket_def) :
     '''Analyze a rocket DV specified in a JSON file.
@@ -1599,12 +1800,32 @@ def main() :
         else :
             print("Could not convert %f %s" % (value, unit) )
 
-    import matplotlib
-    import matplotlib.pyplot as plt
+    if False:
+        import matplotlib
+        import matplotlib.pyplot as plt
 
-    fig1, ax1 = plt.subplots()
-    dd.plot(ax1, [[0,2]])
-    plt.show()
+        fig1, ax1 = plt.subplots()
+        dd.plot(ax1, [[0,2]])
+        plt.show()
+
+    if True :
+        
+        o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
+        o2.plot(use_t = True, Rbody=600000)
+        o2.plot(use_t = False, Rbody=600000)
+
+        o = Orbit( [ 2000, 670000, 0, 0.0, 0.004 ], bodies_db["Kerbin"]["GM"][0] )
+        o.plot(use_t = True, Rbody=6E5)
+        o.plot(use_t = False, Rbody=6E5)
+
+        o3 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="parabola" )
+        o3.plot(use_t = True, Rbody=600000)
+        o3.plot(use_t = False, Rbody=600000)
+
+        o4 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
+        o4.plot(use_t = True, Rbody=600000)
+        o4.plot(use_t = False, Rbody=600000)
+        
 
 if __name__ == "__main__" :
     main()
