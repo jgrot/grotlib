@@ -313,17 +313,20 @@ class Orbit :
         E = 0.5*m*vsq - (k/r)
         e = math.sqrt(1.0 + 2.0*E*m*h*h/(k*k))
         r0 = m*h*h/(k*(1.0 + e))
+        v0 = h/r0
         if e < 1.0 :
             r1 = (1.0 + e)/(1.0 - e)
         else :
             r1 = math.inf
-        
+
+        self.GM = GM
         self.m = m
         self.k = k
         self.h = h
         self.E = E
         self.e = e
         self.r0 = r0
+        self.v0 = v0
         self.r1 = r1
 
         if e > 0.0 :
@@ -404,6 +407,17 @@ class Orbit :
             return self.ORB_PARABOLA
         return self.ORB_HYPERBOLA
         
+    def r0_dv_to_e(self, e) :
+        '''Computes *signed* delta V to change eccentricity at r0
+
+        * This works for any e.
+        * Returns signed value, so take the absolute value when making DV maps.
+
+        Use Hohmann transfer for elliptical orbits.
+        '''
+        v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
+        return (v0_new - self.v0)
+
     def plot(self, use_t=False, Rbody=None) :
         import matplotlib
         import matplotlib.pyplot as plt
@@ -1302,11 +1316,11 @@ def dInterpRadius(term, dunit="m") :
 
     return R
 
-def dvHohmannApo(body, r_peri, r_apo) :
-    '''DV computed when thrusting a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
+def dvHohmannApo(body, h_peri, h_apo) :
+    '''DV computed when firing a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
 
-    :param (d,"du") r_peri: periapsis
-    :param (d,"du") r_apo:  apoapsis
+    :param (d,"du") h_peri: periapsis *altitude* (not radius)
+    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
 
     :returns: float Delta-V for maneuver
     '''
@@ -1317,22 +1331,22 @@ def dvHohmannApo(body, r_peri, r_apo) :
     (R, Ru) = body_rec["R"]
     R *= uconv(dist_db, Ru, "m")
     
-    rperi, rperiu = r_peri
-    rperi *= uconv(dist_db, rperiu, "m")
+    hperi, hperiu = h_peri
+    hperi *= uconv(dist_db, hperiu, "m")
     
-    rapo, rapou = r_apo
-    rapo *= uconv(dist_db, rapou, "m")
+    hapo, hapou = h_apo
+    hapo *= uconv(dist_db, hapou, "m")
 
-    A = math.sqrt(GM/(rapo + R))
-    B = 1.0 - math.sqrt(2.0*(rperi + R)/(rperi + rapo + 2.0*R))
+    A = math.sqrt(GM/(hapo + R))
+    B = 1.0 - math.sqrt(2.0*(hperi + R)/(hperi + hapo + 2.0*R))
 
     return A*B
     
-def dvHohmannPeri(body, r_peri, r_apo) :
-    '''DV computed when thrusting a) prograde at peri to obtain elliptical orbit, or b) retrograde at peri to obtain circular orbit.
+def dvHohmannPeri(body, h_peri, h_apo) :
+    '''DV computed when firing a) prograde at peri to attain elliptical orbit, or b) retrograde at peri to attain circular orbit.
 
-    :param (d,"du") r_peri: periapsis
-    :param (d,"du") r_apo:  apoapsis
+    :param (d,"du") h_peri: periapsis *altitude* (not radius)
+    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
 
     :returns: float Delta-V for maneuver
     '''
@@ -1343,14 +1357,14 @@ def dvHohmannPeri(body, r_peri, r_apo) :
     (R, Ru) = body_rec["R"]
     R *= uconv(dist_db, Ru, "m")
     
-    rperi, rperiu = r_peri
-    rperi *= uconv(dist_db, rperiu, "m")
+    hperi, hperiu = h_peri
+    hperi *= uconv(dist_db, hperiu, "m")
     
-    rapo, rapou = r_apo
-    rapo *= uconv(dist_db, rapou, "m")
+    hapo, hapou = h_apo
+    hapo *= uconv(dist_db, hapou, "m")
 
-    A = math.sqrt(GM/(rperi + R))
-    B = math.sqrt(2.0*(rapo + R)/(rperi + rapo + 2.0*R)) - 1.0
+    A = math.sqrt(GM/(hperi + R))
+    B = math.sqrt(2.0*(hapo + R)/(hperi + hapo + 2.0*R)) - 1.0
 
     return A*B
 
@@ -1611,6 +1625,9 @@ def main() :
     cmd_dvOrbit.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_dvOrbit.add_argument("alt", help="\"(alt, 'unit')\"")
 
+    # Command "experiment"
+    cmd_experiment = subparsers.add_parser("experiment", help="Run experimental code")
+
     # Command "jump"
     cmd_jump = subparsers.add_parser("jump", help="Computes first stage fuel or thrust to reach a target altitude and speed.  Tip: MINIMIZE DRAG ON VEHICLE.")
     cmd_jump.add_argument("alt", help="\"(alt, 'unit')\"")
@@ -1800,32 +1817,41 @@ def main() :
         else :
             print("Could not convert %f %s" % (value, unit) )
 
-    if False:
-        import matplotlib
-        import matplotlib.pyplot as plt
+    if args.command == "experiment" :
 
-        fig1, ax1 = plt.subplots()
-        dd.plot(ax1, [[0,2]])
-        plt.show()
+        if False :
+            o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
+            o2.plot(use_t = True, Rbody=600000)
+            o2.plot(use_t = False, Rbody=600000)
+            
+            o = Orbit( [ 2000, 670000, 0, 0.0, 0.004 ], bodies_db["Kerbin"]["GM"][0] )
+            o.plot(use_t = True, Rbody=6E5)
+            o.plot(use_t = False, Rbody=6E5)
+            
+            o3 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="parabola" )
+            o3.plot(use_t = True, Rbody=600000)
+            o3.plot(use_t = False, Rbody=600000)
+            
+            o4 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
+            o4.plot(use_t = True, Rbody=600000)
+            o4.plot(use_t = False, Rbody=600000)
 
-    if True :
-        
-        o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
-        o2.plot(use_t = True, Rbody=600000)
-        o2.plot(use_t = False, Rbody=600000)
+        if True:
+            o = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
+            print(o.r0, o.e)
+            e = 0.2
+            r1 = o.r0*(1.0+e)/(1.0-e)
+            print(r1, e)
+            print(dvHohmannPeri("Kerbin", (o.r0-600000,"m"), (r1-600000,"m")))
+            print(o.r0_dv_to_e(e))
 
-        o = Orbit( [ 2000, 670000, 0, 0.0, 0.004 ], bodies_db["Kerbin"]["GM"][0] )
-        o.plot(use_t = True, Rbody=6E5)
-        o.plot(use_t = False, Rbody=6E5)
-
-        o3 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="parabola" )
-        o3.plot(use_t = True, Rbody=600000)
-        o3.plot(use_t = False, Rbody=600000)
-
-        o4 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
-        o4.plot(use_t = True, Rbody=600000)
-        o4.plot(use_t = False, Rbody=600000)
-        
+            o = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
+            print(o.r0, o.e)
+            e = 0.2
+            r1 = o.r0*(1.0+e)/(1.0-e)
+            print(r1, e)
+            print(dvHohmannPeri("Kerbin", (o.r0-600000,"m"), (r1-600000,"m")))
+            print(o.r0_dv_to_e(e))
 
 if __name__ == "__main__" :
     main()
