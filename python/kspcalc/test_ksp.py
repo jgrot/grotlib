@@ -3,14 +3,16 @@
 import sys
 
 import compare as cmp
-import json
 import ksp
+import mks_polar_motion as mpm
+
+import json
 import math
 import os
 import pickle
 
 
-def compareSolutions( soln, soln_ref ) :
+def compareSolutions(soln, soln_ref) :
     
     for irow, row in enumerate( soln ) :
         try :
@@ -27,18 +29,17 @@ def compareSolutions( soln, soln_ref ) :
             if not cmp.fsame(elem, elem_ref, report_to = sys.stderr, report = cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
 
-def T2DS1ME( ) :
+def T2DS1ME() :
     
     print("Testing traj2d with one stage with mixed engines (T2DS1ME)")
     
     tname = "T2DS1ME"
     tfile = ksp.pthut(tname + ".pkl")
-
     do_generate = not os.access(tfile, os.F_OK)
 
     stage_1 = ksp.Stage()
     stage_1.loadJSON(ksp.pthut(tname + "_stage1.json"))
-    stage_1.dumpInfo( )
+    # stage_1.dumpInfo( )
 
     def fthrottle( t, y ) :
         return 1.0
@@ -67,11 +68,11 @@ def T2DS1ME( ) :
             compareSolutions( flyer.soln, soln_compare )      
         print("SUCCESS")
 
-    flyer.plot( )
-    flyer.dumpTraj( )    
+    # flyer.plot( )
+    # flyer.dumpTraj( )    
 
 
-def T2DS2ME( ) :
+def T2DS2ME() :
     # KSP Flight
     #
     # 50s stage
@@ -84,16 +85,15 @@ def T2DS2ME( ) :
     
     tname = "T2DS2ME"
     tfile = ksp.pthut(tname + ".pkl")
-
     do_generate = not os.access(tfile, os.F_OK)
 
     stage_1 = ksp.Stage()
     stage_1.loadJSON(ksp.pthut(tname + "_stage1.json"))
-    stage_1.dumpInfo( )
+    # stage_1.dumpInfo( )
 
     stage_2 = ksp.Stage()
     stage_2.loadJSON(ksp.pthut(tname + "_stage2.json"))
-    stage_2.dumpInfo( )
+    # stage_2.dumpInfo( )
     
     def fthrottle( t, y ) :
         return 1.0
@@ -141,9 +141,113 @@ def T2DS2ME( ) :
             compareSolutions( DV, soln_compare["DV"] )
         print("SUCCESS")
             
-    fly_s2.plot( t0 = 0.0, dt = 10.0 )
-    fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
+    # fly_s2.plot( t0 = 0.0, dt = 10.0 )
+    # fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
 
+
+def TORBIT() :
+    print("Testing Orbit object (TORBIT)")
+    
+    tname = "TORBIT"
+    tfile = ksp.pthut(tname + ".pkl")
+    do_generate = not os.access(tfile, os.F_OK)
+
+    GM = ksp.bodies_db["Kerbin"]["GM"][0]
+    r = 670E3
+    
+    # Test circular orbit
+    o = mpm.Orbit( [ 2000, r, 0, 100.0, 0.01 ], GM, force="circle" )
+    # Eccentricity must be identically zero, so tolfrac is zero
+    if not cmp.fsame(o.e, 0.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.h, 1537888162.383728, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.E, -5268656716.417911, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.v0, 2295.3554662443707, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.r1, r, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    tau_circ = 2.0*math.pi/math.sqrt(GM/math.pow(r,3.0))
+    if not cmp.fsame(o.tau, tau_circ, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    t1 = 0.25*o.tau
+    t2 = 0.5*o.tau
+    t3 = 0.75*o.tau
+
+    phi1 = o.phi_t(t1)
+    phi2 = o.phi_t(t2)
+    phi3 = o.phi_t(t3)
+    
+    if not cmp.fsame(phi1, 0.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi2, math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi3, 1.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    # Test ellipse
+    o = mpm.Orbit( [ 2000, r, 0, 0.0, 0.004 ], GM )
+    if not cmp.fsame(o.e, 0.3632317280453257, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.h, 1795600000.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.E, -3354913432.835821, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.v0, 2680.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.r1, 1434376.2056275664, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.tau, 3609.379904084419, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    t1 = 0.25*o.tau
+    t2 = 0.5*o.tau
+    t3 = 0.75*o.tau
+
+    phi1 = o.phi_t(t1)
+    phi2 = o.phi_t(t2)
+    phi3 = o.phi_t(t3)
+
+    phi1_truth = 2.243174345833845
+    phi3_truth = 2.0*math.pi - phi1_truth
+    if not cmp.fsame(phi1, phi1_truth, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi2, math.pi, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi3, phi3_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    # Test parabola
+    o = mpm.Orbit( [ 2000, r, 0, 100.0, 0.01 ], GM, force="parabola" )
+    # e must be identically 1.0
+    if not cmp.fsame(o.e, 1.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.h, 2174902296.656105, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    # E must be identically 0.0
+    if not cmp.fsame(o.E, 0.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.v0, 3246.1228308300074, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.phi0, 0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    t1 = 10.0
+    t2 = 100.0
+    t3 = 1000.0
+
+    phi1 = o.phi_t(t1)
+    phi2 = o.phi_t(t2)
+    phi3 = o.phi_t(t3)
+
+    if not cmp.fsame(phi1, 0.0484306562739271, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi2, 0.46686597787401796, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi3, 1.9248853641334023, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    # Test hyperbola (Note, positive vr entry point)
+    o = mpm.Orbit( [ 2000, r, 0.0, 100.0, 0.01 ], GM)
+    if not cmp.fsame(o.e, 7.521273426540002, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.h, 4489000000.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.E, 34362686567.16418, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.v0, 6700.845443458724, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.phi0, 0.016908466324052317, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    t1 = 10.0
+    t2 = 100.0
+    t3 = 1000.0
+
+    phi1 = o.phi_t(t1)
+    phi2 = o.phi_t(t2)
+    phi3 = o.phi_t(t3)
+
+    if not cmp.fsame(phi1, 0.11646814389316827, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi2, 0.8124500214444215, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi3, 1.5793754092713874, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    print("SUCCESS")
     
 if __name__ == "__main__" :
 
@@ -280,5 +384,6 @@ if __name__ == "__main__" :
     test = ksp.jump((44,"km"), "Kerbin", 175, (3,"t"), (200,"kN"), "mfuel")
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
-    T2DS1ME( )
-    T2DS2ME( )
+    T2DS1ME()
+    T2DS2ME()
+    TORBIT()

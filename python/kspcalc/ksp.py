@@ -2,7 +2,6 @@
 # Copyright © 2021 Jonathan Grot
 
 import argparse
-import bisect
 import copy
 import json
 import math
@@ -14,7 +13,8 @@ import sys
 import tabulate
 
 # Grotlib modules
-import functor
+import mks_polar_motion as mpm
+import moremath as mm
 import mpl_tools as mpt
 
 # Verify Python version
@@ -209,15 +209,15 @@ def processBodyDbs( ) :
             dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
             snd  = [ math.sqrt(142E3 / di) for di in dens ]
 
-            bodyrec["fdens"] = functor.Interp1DFunctor( alts, dens, kind="quadratic" )
-            bodyrec["fpress"] = functor.Interp1DFunctor( alts, ps, kind="quadratic" )
-            bodyrec["fsnd"] = functor.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
+            bodyrec["fdens"] = mm.Interp1DFunctor( alts, dens, kind="quadratic" )
+            bodyrec["fpress"] = mm.Interp1DFunctor( alts, ps, kind="quadratic" )
+            bodyrec["fsnd"] = mm.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
 
 #
 # Drag Divergence
 #
 
-class DragDivergence( functor.Functor ) :
+class DragDivergence( mm.Functor ) :
 
     def __init__( self, c0=3.0, c1=10.0, c2=0.71 ) :
         rangemin = [0.0]
@@ -252,238 +252,6 @@ dd = DragDivergence()
 # Trajectories and Orbits
 #
 
-class Orbit :
-    '''Parameterized orbit under a gravitational force initialized by a
-       trajectory point anywhere along the orbit.
-
-    Parameterizes by "phi" such that phi=0 is at the periapsis.
-
-    self.phi0 represents phi at the initialization point.
-
-    :param list y: makePolarMotionSolver variables [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
-    :param float GM: body GM
-
-    Some orbit equations:
-
-    .. math::
-
-       k = G M m
-
-       h = r^2 \omega = r v_{\phi} = r_0 v_0 = r_1 v_1
-
-       E = { m v^2 \over 2 } - { k \over r } = \mathit{const}
-
-       e = \sqrt{1 + 2Emh^2k^{-2}}
-
-       r_0 = { mh^2 \over { k(1+e) } }
-
-       r = r_0 { {1+e} \over { 1 + e \cos \phi } }
-
-       \phi_0 = \mathrm{arccos} \\left ( { 1 \over e} \\left ( {r_0 \over r} (1+e) - 1 \\right ) \\right ); \: \mathrm{if} \: \dot{r} < 0, \; \phi_0 \leftarrow 2\pi - \phi_0
-
-       \\tau = 2 \pi \\left( {m \over k} \\right)^{1/2} a^{3/2}
-
-       a = { {m h^2} \over { k(1-e^2) } }
- 
-       {d\phi \over dt } = h \\left( { 1 + e\cos \phi } \over { r_0 (1+e) } \\right) ^2 = A(1+e\cos\phi)^2; \: A= { h \over { ( r_0(1+e) )^2 } }
-
-    '''
-
-    ORB_CIRCLE = 0
-    ORB_ELLIPSE = 1
-    ORB_PARABOLA = 2
-    ORB_HYPERBOLA = 3
-    ORB_ORBITS = ( 'circle', 'ellipse', 'parabola', 'hyperbola' )
-    
-    def __init__(self, y, GM, force=None) :
-        
-        m, r, th, vr, om = y
-
-        if force is not None :
-            if force == "circle" :
-                om = math.sqrt(GM/r)/r
-                vr = 0.0
-            elif force == "parabola" :
-                om = math.sqrt(2.0*GM/r)/r
-                vr = 0.0
-
-        k = GM*m
-        h = r*r*om
-        vsq = vr*vr + h*om
-        E = 0.5*m*vsq - (k/r)
-        e = math.sqrt(1.0 + 2.0*E*m*h*h/(k*k))
-        r0 = m*h*h/(k*(1.0 + e))
-        v0 = h/r0
-        if e < 1.0 :
-            r1 = (1.0 + e)/(1.0 - e)
-        else :
-            r1 = math.inf
-
-        self.GM = GM
-        self.m = m
-        self.k = k
-        self.h = h
-        self.E = E
-        self.e = e
-        self.r0 = r0
-        self.v0 = v0
-        self.r1 = r1
-
-        if e > 0.0 :
-            # Not a circle
-            x1 = 1.0 / e
-            x2 = (r0/r)*(1.0 + e)
-            x3 = x1*(x2 - 1.0)
-            if x3 >= 1.0 :
-                phi0 = 0.0
-            elif x3 <= -1.0 :
-                phi0 = -math.pi
-            else :
-                phi0 = math.acos(x3)
-                if vr < 0.0 :
-                    phi0 = 2.0*math.pi - phi0
-            
-            self.phi0 = phi0
-        else :
-            # Circle
-            self.phi0 = 0.0
-
-        # Set up time integrator for phi.  Works for all orbits.
-            
-        A = h / math.pow(r0*(1.0 + e), 2.0)
-
-        def f(t, y) :
-            x1 = 1.0 + e*math.cos(y[0])
-            ans = A*x1*x1
-            return [ ans ]
-
-        solv = ode(f).set_integrator("vode", method="adams")
-
-        orbtype = self.classify()
-        
-        if orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
-            
-            solv.set_initial_value( 0.0, 0.0 )
-
-            self.phivt = [ [0.0] ]
-            self.solnt = [ 0.0 ]
-
-            dt = 0.1
-            phi = 0.0
-            
-            while solv.successful() and phi < 2.0*math.pi :
-                phi = solv.integrate( solv.t + dt )
-
-                self.phivt.append( list(phi) )
-                self.solnt.append( solv.t )
-                
-        elif orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
-            
-            self.phi_max = math.acos(-1.0/self.e)
-            self.phi_min = -self.phi_max
-
-            solv.set_initial_value( self.phi0, 0.0 )
-
-            self.phivt = [ [self.phi0] ]
-            self.solnt = [ 0.0 ]
-
-            dt = 0.1
-            phi = 0.0
-            
-            while solv.successful() and solv.t < 1000.0 :
-                phi = solv.integrate( solv.t + dt )
-
-                self.phivt.append( list(phi) )
-                self.solnt.append( solv.t )
-
-    def classify( self ) :
-        if self.e < 0 :
-            raise Exception("Logic error: e < 0")
-        if self.e == 0 :
-            return self.ORB_CIRCLE
-        if self.e < 1 :
-            return self.ORB_ELLIPSE
-        if self.e == 1 :
-            return self.ORB_PARABOLA
-        return self.ORB_HYPERBOLA
-        
-    def r0_dv_to_e(self, e) :
-        '''Computes *signed* delta V to change eccentricity at r0
-
-        * This works for any e.
-        * Returns signed value, so take the absolute value when making DV maps.
-
-        Use Hohmann transfer for elliptical orbits.
-        '''
-        v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
-        return (v0_new - self.v0)
-
-    def plot(self, use_t=False, Rbody=None) :
-        import matplotlib
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots()
-        
-        orbtype = self.classify()
-        
-        if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
-            if use_t :
-                phi_of_t = lambda t: interp2Dtraj(t, self.solnt, self.phivt)[0]
-                r_of_t = lambda t : self.y_phi( phi_of_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                maxphi = 0.9*self.phi_max
-                dphi = (maxphi - self.phi0)/100.0
-                mpt.plot_polar(ax, r_of_phi, phi_of_phi, self.phi0, dphi, maxphi, centered=True, marker="o")
-                
-        elif orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
-            if use_t :
-                phi_of_t = lambda t: interp2Dtraj(t, self.solnt, self.phivt)[0]
-                r_of_t = lambda t : self.y_phi( phi_of_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                dphi = 2.0*math.pi/100.0
-                maxphi = dphi*99.0
-                mpt.plot_polar(ax, r_of_phi, phi_of_phi, 0.0, dphi, maxphi, centered=True, marker="o")
-
-        if Rbody is not None :
-            mpt.plot_circle(ax, Rbody, 100)
-            
-        plt.show()
-
-    def y_phi( self, phi ) :
-        '''Returns a polar motion state vector.
-        '''
-        
-        num = self.r0*(1.0 + self.e)
-        denom = 1.0 + self.e*math.cos(phi)
-        r = num / denom
-
-        vphi = self.h / r
-        om = vphi / r
-        
-        vsq = (2.0/self.m) * (self.E + self.k/r)
-
-        vrsq = vsq - vphi*vphi
-
-        if vrsq < 0.0 :
-            print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq)
-            vrsq = 0.0
-        
-        vr = math.sqrt( vrsq )
-
-        if phi > math.pi :
-            vr = -vr
-        
-        return [ self.m, r, phi, vr, om ]
 
 class Stage :
     '''Model of an isolated stage.
@@ -939,7 +707,7 @@ class FlyingStage :
                 # print( "WARNING: FlyingStage is crashed at time %f" % t )
                 return ( copy.copy(self.soln[-1]), True, self )
 
-        y = interp2Dtraj( t, self.solnt, self.soln )
+        y = mm.bisect_interp(t, self.solnt, self.soln)
         
         return ( y, False, self )
 
@@ -981,7 +749,7 @@ class FlyingStage :
         a_r   = lambda t, y : self._a_r(t, y)
         a_th  = lambda t, y : self._a_th(t, y)
         
-        self.solv = makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 )
+        self.solv = mpm.makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 )
 
         self.solnt = [ t0 ]
         self.soln = [ y0 ]
@@ -1027,60 +795,6 @@ class FlyingStage :
         mpt.plot_circle(ax, self.R+70E3, 100)
 
         plt.show()
-
-def interp2Dtraj( t, solnt, soln ) :
-    '''Utility function for interpolating traj solutions vs t.
-    
-    :param float t: query time of point along trajectory
-    :param list solnt: array of times corresponding to each element of soln.
-    :param list soln: array of traj points (any dimensionality).
-
-    :Rationale: bisect is used in case a non-uniform time interval is used.
-    :TODO: consider using the scipy interpolator.
-    '''
-    
-    i = (bisect.bisect( solnt, t ) - 1)
-    if i == len(solnt)-1 :
-        return soln[-1]
-    t0 = solnt[i]
-    t1 = solnt[i+1]
-    a = (t - t0)/(t1 - t0)
-    y0 = soln[i]
-    y1 = soln[i+1]
-    y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
-    
-    return y
-
-def makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 ) :
-    '''Creates an ODE solver that numerically integrates the planar orbit equations as a function of time.
-    
-    Dependent variable list:
-
-        y := [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
-
-    :param function dmdt: function( t, y ) -> ks/s
-    :param function a_r:  function( t, y ) -> acceleration along r axis
-    :param function a_th: function( t, y ) -> acceleration along th axis
-    :param list y0:       initial conditions
-    :param float t0:      starting time (s)
-
-    :returns: scipy.integrate.ode object.
-    '''
-
-    def f(t, y) :
-        m, r, th, vr, om = y
-        return [ dmdt(t, y),                   # dmdt 
-                 vr,                           # drdt
-                 om,                           # dThdt
-                 a_r(t, y) + r*om*om,          # dvrdt
-                 ( a_th(t, y) - 2*vr*om ) / r  # domdt 
-        ]
-
-    solv = ode( f ).set_integrator( "vode", method="adams" )
-
-    solv.set_initial_value( y0, t0 )
-
-    return solv
 
 #
 # Prototype Code
@@ -1337,10 +1051,10 @@ def dvHohmannApo(body, h_peri, h_apo) :
     hapo, hapou = h_apo
     hapo *= uconv(dist_db, hapou, "m")
 
-    A = math.sqrt(GM/(hapo + R))
-    B = 1.0 - math.sqrt(2.0*(hperi + R)/(hperi + hapo + 2.0*R))
+    r0 = R+hperi
+    r1 = R+hapo
 
-    return A*B
+    return mpm.dv_r1_hohmann(GM, r0, r1)
     
 def dvHohmannPeri(body, h_peri, h_apo) :
     '''DV computed when firing a) prograde at peri to attain elliptical orbit, or b) retrograde at peri to attain circular orbit.
@@ -1363,10 +1077,10 @@ def dvHohmannPeri(body, h_peri, h_apo) :
     hapo, hapou = h_apo
     hapo *= uconv(dist_db, hapou, "m")
 
-    A = math.sqrt(GM/(hperi + R))
-    B = math.sqrt(2.0*(hapo + R)/(hperi + hapo + 2.0*R)) - 1.0
+    r0 = R+hperi
+    r1 = R+hapo
 
-    return A*B
+    return mpm.dv_r0_hohmann(GM, r0, r1)
 
 def dvInterp(maneuvers) :
     '''Interpret a set of maneuvers to compute DV map'''
@@ -1819,7 +1533,7 @@ def main() :
 
     if args.command == "experiment" :
 
-        if False :
+        if True :
             o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
             o2.plot(use_t = True, Rbody=600000)
             o2.plot(use_t = False, Rbody=600000)

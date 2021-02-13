@@ -1,5 +1,5 @@
-KSP - Main Library Module
-=========================
+KSP Calculator
+==============
 
 Setup
 -----

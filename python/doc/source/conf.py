@@ -12,12 +12,12 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../'))
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'kspcalc'
+project = 'grotlib'
 copyright = '2020, Jonathan Grot'
 author = 'Jonathan Grot'
 

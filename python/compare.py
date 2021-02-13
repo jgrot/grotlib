@@ -1,22 +1,17 @@
 # Copyright © 2021 Jonathan Grot
 
-'''Recommended usage
-
-import compare as cmp
-
-if cmp.fsame(a,b) :
-   print("Same!")
-
+'''Toleranced floating point comparisons.
 '''
 
+import math
 import sys
 
-
+# Control of reporting behavior
 CMP_ONLY_NOT_SAME = 1
 CMP_ONLY_SAME = 2
 CMP_BOTH = 3
 
-def fsame(a, b, tolfrac=1E-15, report_to = sys.stderr, report = CMP_BOTH ) :
+def fsame(a, b, tolfrac=1E-15, report_to=sys.stderr, report=CMP_BOTH) :
     '''Compare floats.  Returns true if within fractional tolerance.
 
     report_to is a file object
@@ -24,7 +19,10 @@ def fsame(a, b, tolfrac=1E-15, report_to = sys.stderr, report = CMP_BOTH ) :
     
     tol = tolfrac*0.5*(abs(a) + abs(b))
 
-    same = ( abs(a-b) <= tol )
+    if tol == math.inf :
+        same = False
+    else :
+        same = ( abs(a-b) <= tol )
 
     if report_to is not None :
     
@@ -40,13 +38,13 @@ def fsame(a, b, tolfrac=1E-15, report_to = sys.stderr, report = CMP_BOTH ) :
 
     return same
 
-def flessthan(a, b, tolfrac=1E-15 ) :
+def flessthan(a, b, tolfrac=1E-15) :
     ''' a <? b '''
 
     tol = tolfrac*0.5*(abs(a) + abs(b))
     return ( a-b < -tol )
 
-def fgreaterthan(a, b, tolfrac=1E-15 ) :
+def fgreaterthan(a, b, tolfrac=1E-15) :
     ''' a >? b '''
 
     tol = tolfrac*0.5*(abs(a) + abs(b))

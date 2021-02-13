@@ -1,10 +1,17 @@
 # Copyright © 2021 Jonathan Grot
 
+'''Miscellaneous Mathematical Things'''
+
+import bisect
 from scipy.interpolate import interp1d
 
 # Grotlib imports
 import compare as cmp
 import type_tools
+
+#
+# Exceptions
+#
 
 class BadDimError( Exception ) :
     def __init__( self, msg ) :
@@ -22,6 +29,29 @@ class RangeError( Exception ) :
     def __init__( self, msg ) :
         super().__init__( msg )
 
+
+def bisect_interp( t, tseries, yseries ) :
+    '''Utility function for interpolating traj solutions vs t.
+    
+    :param float t: input value of parameter
+    :param list tseries: array of parameter values corresponding to each element of yseries.
+    :param list yseries: array of iterable of y values (any dimensionality).
+
+    :Rationale: bisect is used in case a non-uniform time interval is used.
+    '''
+    
+    i = (bisect.bisect( tseries, t ) - 1)
+    if i == len(tseries)-1 :
+        return yseries[-1]
+    t0 = tseries[i]
+    t1 = tseries[i+1]
+    a = (t - t0)/(t1 - t0)
+    y0 = yseries[i]
+    y1 = yseries[i+1]
+    y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
+    
+    return y
+
 class Functor :
     '''Abstract base class for a multi-variable function with built-in plotting capability.
 
@@ -32,16 +62,20 @@ class Functor :
     :param iterable rangemax: (x1max, x2max, ...)
 
     :Usage Notes:
-      * Derived class must provide nDep() method to return number of independent variables returned in call()
-      * Derived class definition of call()
-        * call() MUST have the signature call(self, *X)
-        * should usually call checkRange(X) before anything else
-        * return Y: [ y1, y2, ... ]
+
+    - Derived class must provide nDep() method to return number of independent variables returned in call()
+    - Derived class definition of call()
+
+      - call() MUST have the signature ``call(self, *X)``
+      - should usually call checkRange(X) before anything else
+      - return Y: [ y1, y2, ... ]
 
     :Throws:
-      * BadDimError
-      * RangeError
-      * InitError
+
+    - BadDimError
+    - RangeError
+    - InitError
+
     '''
     def __init__( self, rangemin, rangemax ) :
         
@@ -70,8 +104,9 @@ class Functor :
         '''Checks dimensionality of X and the elements of X against ranges.
 
         :Throws:
-          * BadDimError
-          * RangeError
+
+        - BadDimError
+        - RangeError
         '''
         
         if len(X) != self.n_indep_var :
@@ -91,19 +126,23 @@ class Functor :
         :param int dep_var: Index into result Y to plot.
 
         The 'range_specs' argument contains instructions for each independent variable:
-          * <True> indicates that the function should be plotted over the full range (specified in the constructor) for that independent variable
-          * (min,max) overrides the specified range.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.
-          * <Fixed value> indicates that this independent variable should have a fixed value.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.  
+
+        - <True> indicates that the function should be plotted over the full range (specified in the constructor) for that independent variable
+        - (min,max) overrides the specified range.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.
+        - <Fixed value> indicates that this independent variable should have a fixed value.  Exceeding the specified ranges will trigger a RangeError if call() is using checkRange() and not catching the exception.  
         
         :Matplotlib Tips:
+
         Annotate the Axes object with:
-           * set_title()
-           * set_xlable()
-           * set_ylabel()
+
+        - ``set_title()``
+        - ``set_xlable()``
+        - ``set_ylabel()``
        
         :Throws:
-          * BadDimError
-          * BadValueError
+
+        - BadDimError
+        - BadValueError
         '''
         import numpy
         
@@ -261,13 +300,12 @@ class Interp1DFunctor( Functor ) :
     def nDep( self ) :
         return 1
 
+
 #
 # Unit test (and examples)
 #
 if __name__ == "__main__" :
     # Unit test and demo
-
-    import math
 
     class Norm3D( Functor ) :
         
