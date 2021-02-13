@@ -30,7 +30,7 @@ class RangeError( Exception ) :
         super().__init__( msg )
 
 
-def bisect_interp( t, tseries, yseries ) :
+def bisect_interp(t, tseries, yseries) :
     '''Utility function for interpolating traj solutions vs t.
     
     :param float t: input value of parameter
@@ -51,6 +51,19 @@ def bisect_interp( t, tseries, yseries ) :
     y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
     
     return y
+
+#
+# Trig
+#
+
+def home_angle(angle) :
+    ''' Takes an angle of any value and resets to -pi <= angle <= pi
+
+    :param float angle: radians
+    '''
+    x = math.cos(angle)
+    y = math.sin(angle)
+    return math.atan2( y, x )
 
 class Functor :
     '''Abstract base class for a multi-variable function with built-in plotting capability.

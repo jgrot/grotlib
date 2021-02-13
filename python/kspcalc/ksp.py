@@ -52,18 +52,6 @@ def pthut( filename ) :
     return os.path.join( KSPUTDIR, filename )
 
 #
-# Angle Tools
-#
-
-def homeAngle( angle ) :
-    ''' Takes an angle of any value and resets to -pi <= angle <= pi
-    :param float angle: radians
-    '''
-    x = math.cos(angle)
-    y = math.sin(angle)
-    return math.atan2( y, x )
-
-#
 # Constants
 #
 
