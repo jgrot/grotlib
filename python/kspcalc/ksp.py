@@ -1521,7 +1521,7 @@ def main() :
 
     if args.command == "experiment" :
 
-        if True :
+        if False:
             o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
             o2.plot(use_t = True, Rbody=600000)
             o2.plot(use_t = False, Rbody=600000)
@@ -1538,7 +1538,7 @@ def main() :
             o4.plot(use_t = True, Rbody=600000)
             o4.plot(use_t = False, Rbody=600000)
 
-        if True:
+        if False:
             o = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
             print(o.r0, o.e)
             e = 0.2
@@ -1554,6 +1554,41 @@ def main() :
             print(r1, e)
             print(dvHohmannPeri("Kerbin", (o.r0-600000,"m"), (r1-600000,"m")))
             print(o.r0_dv_to_e(e))
+
+        if True :
+            import matplotlib
+            import matplotlib.pyplot as plt
+
+            fig, ax = plt.subplots()
+        
+
+            o = mpm.Orbit([ 2000, 670000, 0, 0.0, 0.005 ], bodies_db["Kerbin"]["GM"][0] )
+            phi_soi = 0.6*math.pi
+            d_soi = 5.0*o.r0
+            r_soi = 2.0*o.r0
+            x0_soi = d_soi*math.cos(phi_soi)
+            y0_soi = d_soi*math.sin(phi_soi)
+            o.plot(ax, Rbody=6E5)
+            mpt.plot_circle(ax, r_soi, 100, x0_soi, y0_soi)
+            
+            phi_x = o.intersect_soi(phi_soi, d_soi, r_soi)
+
+            print("DEBUG PHIX", phi_x)
+
+            for phi in phi_x :
+                if phi is None:
+                    break
+            
+                r_x = o.y_phi(phi)[1]
+
+                x=[r_x*math.cos(phi)]
+                y=[r_x*math.sin(phi)]
+
+                ax.plot(x,y,marker="o")
+            
+            plt.show()
+
+            
 
 if __name__ == "__main__" :
     main()

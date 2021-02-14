@@ -3,6 +3,7 @@
 '''Miscellaneous Mathematical Things'''
 
 import bisect
+import math
 from scipy.interpolate import interp1d
 
 # Grotlib imports
@@ -56,6 +57,21 @@ def bisect_interp(t, tseries, yseries) :
 # Trig
 #
 
+
+def r_soi(r, phi, d_soi, phi_soi) :
+    '''Computes r in the frame of a remote SOI
+
+    :param float r: r of point
+    :param float phi: phi of point
+    :param float d_soi: distance of new SOI from center of current SOI body.
+    :param float phi_soi: angle of line to SOI in the orbit frame.
+    '''
+    a1 = phi - phi_soi
+    d1 = d_soi - r*math.cos(a1)
+    d2 = r*math.sin(a1)
+    r = math.sqrt(d1*d1 + d2*d2)
+    return r
+
 def home_angle(angle) :
     ''' Takes an angle of any value and resets to -pi <= angle <= pi
 
@@ -64,6 +80,10 @@ def home_angle(angle) :
     x = math.cos(angle)
     y = math.sin(angle)
     return math.atan2( y, x )
+
+#
+# Functor
+#
 
 class Functor :
     '''Abstract base class for a multi-variable function with built-in plotting capability.

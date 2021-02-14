@@ -5,8 +5,11 @@
 
 import math
 from scipy.integrate import ode
+from scipy.optimize import minimize
 
+import compare as cmp
 import moremath as mm
+import mpl_tools as mpt
 
 def dv_r1_hohmann(GM, r0, r1) :
     '''DV computed when firing a) prograde at apo (r1) to attain circular orbit, or b) retrograde from (r1) to attain elliptical orbit.
@@ -193,7 +196,7 @@ class Orbit :
             self.phivt = [ [0.0] ]
             self.solnt = [ 0.0 ]
 
-            dt = 0.1
+            dt = self.tau / 1000.0
             phi = 0.0
             
             while solv.successful() and phi < 2.0*math.pi :
@@ -232,26 +235,92 @@ class Orbit :
             return self.ORB_PARABOLA
         return self.ORB_HYPERBOLA
         
-    def r0_dv_to_e(self, e) :
-        '''Computes *signed* delta V to change eccentricity at r0
+    def intersect_soi(self, phi_soi, d_soi, r_soi) :
+        '''Intersect this orbit with a sphere of influence.  Finds all
+        intersections, so it's up to the caller to sort out what is
+        relevant.
 
-        * This works for any e.
-        * Returns signed value, so take the absolute value when making DV maps.
+        Procedure: starting at the leading edge (angle) of the SOI,
+        looks for alternating minima and maxima, putting the starting
+        simplex of the Nelder-Mead optimization algorithm, just a hair
+        past the last extrema.  Once the optimizer falls off the SOI,
+        we're done.  Testing has shown that a glancing intersection
+        will generally count as one intersection, so it is possible to
+        have anywhere from one to four intersections.
 
-        Use Hohmann transfer for elliptical orbits.
+        :param float phi_soi: angle of line to SOI in the orbit frame.
+        :param float d_soi: distance of new SOI from center of current SOI body.
+        :param float r_soi: radius of new SOI.
+
         '''
-        v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
-        return (v0_new - self.v0)
+
+        # Angle from center of SOI to edge of SOI
+        a = math.asin(r_soi/d_soi)
+
+        phistop_1 = phi_soi - 1.5*a
+        phistop_2 = phi_soi + 1.5*a
+        
+        def objf(X, sign) :
+            phi = X[0]
+            
+            # Searching for maxima will get stuck at these extremes.
+            if phi < phistop_1 :
+                return math.inf
+            if phi > phistop_2 :
+                return math.inf
+            
+            r = self.y_phi(phi)[1]
+            # Bad value of phi for the orbit
+            if r is None :
+                return math.inf
+
+            # Distance of point from SOI center
+            rs = mm.r_soi(r, phi, d_soi, phi_soi)
+
+            # Objective function looking for minima if sign = +1, maxima if sign = -1
+            fr = sign*math.pow((rs - r_soi),2.0)
+            
+            return fr
+
+        # Only care about the mimina
+        minima = []
+
+        # Leading boundary of SOI
+        phia = phi_soi - a
+        phib = phia + .01*a
+
+        sign = 1.0
+        while True :
+            # Start the search for the next extremum
+            init_simplex = [[phia], [phib]]
+            result = minimize(objf, None, args=sign, method="Nelder-Mead", options={"initial_simplex":init_simplex, "fatol": 1E-8})
+
+            fobj = result.fun
+            phi = result.x[0]
+            
+            # If no close call for a minimum, then there is no
+            # intersection.  result.fun is the value of the objective
+            # function.
+            if sign > 0.0 and math.sqrt(fobj) > 1E-8*r_soi :
+                return minima
+
+            if ( phi < (phi_soi - a) or phi > (phi_soi + a) ) :
+                return minima
+            
+            if sign > 0.0 :
+                minima.append(phi)
+
+            # Advance the starting simplex to over the next hump
+            phia = phi
+            phib = phi + 0.01*a
+
+            # Look for the opposite type of extremum
+            sign *= -1.0
 
     def phi_t(self, t) :
         return mm.bisect_interp(t, self.solnt, self.phivt)[0]
     
-    def plot(self, use_t=False, Rbody=None) :
-        import matplotlib
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots()
-        
+    def plot(self, ax, use_t=False, Rbody=None) :
         orbtype = self.classify()
         
         if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
@@ -285,7 +354,17 @@ class Orbit :
         if Rbody is not None :
             mpt.plot_circle(ax, Rbody, 100)
             
-        plt.show()
+
+    def r0_dv_to_e(self, e) :
+        '''Computes *signed* delta V to change eccentricity at r0
+
+        * This works for any e.
+        * Returns signed value, so take the absolute value when making DV maps.
+
+        Use Hohmann transfer for elliptical orbits.
+        '''
+        v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
+        return (v0_new - self.v0)
 
     def y_phi( self, phi ) :
         '''Returns a polar motion state vector.
@@ -293,6 +372,10 @@ class Orbit :
         
         num = self.r0*(1.0 + self.e)
         denom = 1.0 + self.e*math.cos(phi)
+
+        if denom <= 0.0 :
+            return [None, None, None, None, None]
+        
         r = num / denom
 
         vphi = self.h / r
@@ -303,7 +386,7 @@ class Orbit :
         vrsq = vsq - vphi*vphi
 
         if vrsq < 0.0 :
-            print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq)
+            print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq, " PHI ", phi)
             vrsq = 0.0
         
         vr = math.sqrt( vrsq )

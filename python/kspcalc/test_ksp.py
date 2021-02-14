@@ -12,21 +12,6 @@ import os
 import pickle
 
 
-def compareSolutions(soln, soln_ref) :
-    
-    for irow, row in enumerate( soln ) :
-        try :
-            row_ref = soln_ref[ irow ]
-        except :
-            row_ref = None
-                
-        if row_ref is None :
-            print("Ran out of reference data")
-            exit(1)
-                
-        for jelem, elem in enumerate( row ) :
-            elem_ref = row_ref[ jelem ]
-            if not cmp.fsame(elem, elem_ref, report_to = sys.stderr, report = cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
 
 def T2DS1ME() :
@@ -65,7 +50,7 @@ def T2DS1ME() :
     else :
         with open( tfile, 'rb' ) as f :
             soln_compare = pickle.load( f )
-            compareSolutions( flyer.soln, soln_compare )      
+            cmp.compare_datasets( flyer.soln, soln_compare )      
         print("SUCCESS")
 
     # flyer.plot( )
@@ -136,9 +121,9 @@ def T2DS2ME() :
     else :
         with open( tfile, 'rb' ) as f :
             soln_compare = pickle.load( f )
-            compareSolutions( fly_s1.soln, soln_compare["stage1"] )
-            compareSolutions( fly_s2.soln, soln_compare["stage2"] )
-            compareSolutions( DV, soln_compare["DV"] )
+            cmp.compare_datasets( fly_s1.soln, soln_compare["stage1"] )
+            cmp.compare_datasets( fly_s2.soln, soln_compare["stage2"] )
+            cmp.compare_datasets( DV, soln_compare["DV"] )
         print("SUCCESS")
             
     # fly_s2.plot( t0 = 0.0, dt = 10.0 )
@@ -197,7 +182,7 @@ def TORBIT() :
     phi2 = o.phi_t(t2)
     phi3 = o.phi_t(t3)
 
-    phi1_truth = 2.243174345833845
+    phi1_truth = 2.2431742381218593
     phi3_truth = 2.0*math.pi - phi1_truth
     if not cmp.fsame(phi1, phi1_truth, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(phi2, math.pi, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -248,6 +233,43 @@ def TORBIT() :
     if not cmp.fsame(phi3, 1.5793754092713874, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     print("SUCCESS")
+
+def TSOIISECT() :
+    print("Testing SOI intersections")
+
+    ins = [
+        # m, r, th, vr, om, c1, c2, c3
+        [2000.0, 670E3, 0.0, 0.0, 0.0048, 1.0, 40.0, 6.162],
+        [2000.0, 670E3, 0.0, 0.0, 0.0048, 1.0, 40.0, 6.17],
+        [2000.0, 670E3, 0.0, 0.0, 0.0048, 0.95, 40.0, 6.17],
+        [2000.0, 670E3, 0.0, 0.0, 0.005, 0.6, 5.0, 2.0],
+    ]
+
+    outs = [
+        [2.9962290251689883, 3.2869562820106277],
+        [2.992304492616973, 2.9978778327411484, 3.285307474421102, 3.290880814566911],
+        [2.934401028222881, 3.0310486370486043],
+        [1.832548507281095, 2.1857173338290483],
+    ]
+
+    for i, w in enumerate(ins) :
+        x = outs[i]
+
+        m, r, th, vr, om, c1, c2, c3 = w
+
+        y = [m, r, th, vr, om]
+        o = mpm.Orbit(y, ksp.bodies_db["Kerbin"]["GM"][0] )
+        
+        phi_soi = c1*math.pi
+        d_soi = c2*o.r0
+        r_soi = c3*o.r0
+        
+        phi_x = o.intersect_soi(phi_soi, d_soi, r_soi)
+
+        cmp.compare_datasets([phi_x], [x])
+
+    print("SUCCESS")
+
     
 if __name__ == "__main__" :
 
@@ -387,3 +409,4 @@ if __name__ == "__main__" :
     T2DS1ME()
     T2DS2ME()
     TORBIT()
+    TSOIISECT()

@@ -4,7 +4,7 @@
 
 import math
 
-def plot_circle(ax, r, n, **plot_opts) :
+def plot_circle(ax, r, n, x0=0.0, y0=0.0, **plot_opts) :
     '''Plots a circle to axes
 
     :param object ax: Matplotlib Axes object
@@ -18,9 +18,9 @@ def plot_circle(ax, r, n, **plot_opts) :
     dth = 2.0*math.pi / (n+1)
     maxth = 2.0*math.pi
     
-    plot_polar(ax, lambda th: r, lambda th: th, 0, dth, maxth, **plot_opts)
+    plot_polar(ax, lambda th: r, lambda th: th, 0, dth, maxth, x0, y0, **plot_opts)
 
-def plot_polar(ax, r_of_z, th_of_z, z0, dz, max_z, centered=False, **plot_opts) :
+def plot_polar(ax, r_of_z, th_of_z, z0, dz, max_z, x0=0.0, y0=0.0, centered=False, **plot_opts) :
     '''Polar plot
 
     :param object ax: Matplotlib Axes object
@@ -53,8 +53,8 @@ def plot_polar(ax, r_of_z, th_of_z, z0, dz, max_z, centered=False, **plot_opts) 
         else :
             th = th_of_z(z)
             
-        x.append(r*math.cos(th))
-        y.append(r*math.sin(th))
+        x.append(x0+r*math.cos(th))
+        y.append(y0+r*math.sin(th))
 
     if centered :
         square_plot(ax, x, y, **plot_opts)

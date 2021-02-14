@@ -11,6 +11,24 @@ CMP_ONLY_NOT_SAME = 1
 CMP_ONLY_SAME = 2
 CMP_BOTH = 3
 
+def compare_datasets(data, reference) :
+    '''Compares two lists of lists.
+    '''
+    for irow, row in enumerate( data ) :
+        try :
+            row_ref = reference[ irow ]
+        except :
+            row_ref = None
+                
+        if row_ref is None :
+            print("Ran out of reference data")
+            exit(1)
+                
+        for jelem, elem in enumerate( row ) :
+            elem_ref = row_ref[ jelem ]
+            if not fsame(elem, elem_ref, report_to = sys.stderr, report = CMP_ONLY_NOT_SAME) : exit(1)
+
+
 def fsame(a, b, tolfrac=1E-15, report_to=sys.stderr, report=CMP_BOTH) :
     '''Compare floats.  Returns true if within fractional tolerance.
 
