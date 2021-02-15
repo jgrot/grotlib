@@ -1586,10 +1586,10 @@ def main() :
                 plots.append([[x],[y]])
                 plot_opts.append({"marker":"o"})
 
-            xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
+            bbox = mpt.square_plot_bounds(plots)
             
-            mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
-                
+            mpt.square_plots(ax, plots, bbox, plot_opts)
+
             plt.show()
 
             

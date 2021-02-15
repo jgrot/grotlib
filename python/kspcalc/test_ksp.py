@@ -63,14 +63,14 @@ def T2DS1ME() :
         plots = [flyer.sample()]
         plot_opts = [{"marker":"o"}]
 
-        xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
+        bbox = mpt.square_plot_bounds(plots)
         
         plots.append(mpt.sample_circle(flyer.R, 100))
         plot_opts.append(None)
         plots.append(mpt.sample_circle(flyer.R+70, 100))
         plot_opts.append(None)
 
-        mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
+        mpt.square_plots(ax, plots, bbox, plot_opts)
         
         plt.show()
 
@@ -155,14 +155,14 @@ def T2DS2ME() :
         plots = [fly_s2.sample(t0=0.0, dt=10.0)]
         plot_opts = [{"marker":"o"}]
         
-        xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
+        bbox = mpt.square_plot_bounds(plots)
         
         plots.append(mpt.sample_circle(fly_s2.R, 100))
         plot_opts.append(None)
         plots.append(mpt.sample_circle(fly_s2.R+70, 100))
         plot_opts.append(None)
 
-        mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
+        mpt.square_plots(ax, plots, bbox, plot_opts)
         
         plt.show()
 
