@@ -4,37 +4,44 @@
 
 import math
 
-def plot_circle(ax, r, n, x0=0.0, y0=0.0, **plot_opts) :
+def offset_xy(XY, xoff, yoff) :
+
+    X, Y = XY
+
+    X2 = [x+xoff for x in X]
+    Y2 = [y+yoff for y in Y]
+
+    return ( tuple(X2), tuple(Y2) )
+
+
+def sample_circle(r, n) :
     '''Plots a circle to axes
 
-    :param object ax: Matplotlib Axes object
     :param float   r: Radius of circle
     :param int     n: Number of points to plot
     '''
-    x = []
-    y = []
 
     # Last point will overlap to close the circle
     dth = 2.0*math.pi / (n+1)
     maxth = 2.0*math.pi
     
-    plot_polar(ax, lambda th: r, lambda th: th, 0, dth, maxth, x0, y0, **plot_opts)
+    return(sample_polar(lambda th: r, lambda th: th, 0, dth, maxth))
 
-def plot_polar(ax, r_of_z, th_of_z, z0, dz, max_z, x0=0.0, y0=0.0, centered=False, **plot_opts) :
-    '''Polar plot
+def sample_polar(r_of_z, th_of_z, z0, dz, max_z) :
+    '''Sample a polar function.
 
-    :param object ax: Matplotlib Axes object
-    :param float  r_of_z: Radius as a function of parameter z
-    :param float  th_of_z: Theta as a function of parameter z.  If None, then th = z
-    :param float  z0: Parameter z initial value
-    :param float  dz: Parameter z intervals
+    :param float r_of_z: Radius as a function of parameter z
+    :param float th_of_z: Theta as a function of parameter z.  If None, then th = z
+    :param float z0: Parameter z initial value
+    :param float dz: Parameter z intervals
     :param float max_z: Maximum value of z
-    :param bool centered: Calls square_plot if true
-    :param args plot_opts: named arguments to pass to the plot function.
-    '''
-    x = []
-    y = []
 
+    :returns: tuple( tuple(<x values>),tuple(<y values>) )
+    '''
+
+    X=[]
+    Y=[]
+    
     iz = 0.0
 
     while True:
@@ -53,24 +60,40 @@ def plot_polar(ax, r_of_z, th_of_z, z0, dz, max_z, x0=0.0, y0=0.0, centered=Fals
         else :
             th = th_of_z(z)
             
-        x.append(x0+r*math.cos(th))
-        y.append(y0+r*math.sin(th))
+        X.append(r*math.cos(th))
+        Y.append(r*math.sin(th))
 
-    if centered :
-        square_plot(ax, x, y, **plot_opts)
-    else :
-        ax.plot(x, y, **plot_opts)
+    return (X,Y)
 
-def square_plot(ax, xs, ys, **plot_opts) :
-    '''Centers the plot in square axes
+def square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts=None) :
+    ax.set_xlim( xmin, xmax )
+    ax.set_ylim( ymin, ymax )
+    ax.set_aspect(1.0)
 
-    :param object ax: Matplotlib Axes object
-    :param list   xs: List of x values
-    :param list   ys: List of y values
-    :param args   plot_opts: other named arguments to pass to the Matplotlib plot command
+    for iplot, plot in enumerate(plots) :
+        xs, ys = plot
+        if plot_opts is not None and plot_opts[iplot] is not None :
+            ax.plot(xs, ys, **plot_opts[iplot])
+        else :
+            ax.plot(xs, ys)
+
+def square_plot_bounds(plots) :
+    '''Computes params for centering a bunch of plots in a square (presumable aspect ratio 1.0) plot.
+
+    :param [[X,Y]] plots: A collection of X,Y arrays for plotting.
+
+    :returns: (xmin, xmax, ymin, ymax)
     '''
-    xb = [ min(xs), max(xs) ]
-    yb = [ min(ys), max(ys) ]
+
+    xb = [math.inf, -math.inf]
+    yb = [math.inf, -math.inf]
+    
+    for X,Y in plots :
+        xb[0] = min(xb[0], min(X))
+        yb[0] = min(yb[0], min(Y))
+
+        xb[1] = max(xb[1], max(X))
+        yb[1] = max(yb[1], max(Y))
     
     xrng = xb[1] - xb[0]
     yrng = yb[1] - yb[0]
@@ -85,8 +108,5 @@ def square_plot(ax, xs, ys, **plot_opts) :
     ymin = yb[0] - ypad
     ymax = yb[1] + ypad
     
-    ax.set_xlim( xmin, xmax )
-    ax.set_ylim( ymin, ymax )
-    ax.set_aspect(1.0)
-    ax.plot(xs, ys, **plot_opts)
+    return (xmin, xmax, ymin, ymax)
 

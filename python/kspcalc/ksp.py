@@ -743,8 +743,8 @@ class FlyingStage :
         self.soln = [ y0 ]
         self.maxr = 0.0
         
-    def plot( self, t0 = None, t1 = None, dt = 5.0 ) :
-        ''' Plots a trajectory.
+    def sample( self, t0 = None, t1 = None, dt = 5.0 ) :
+        '''Samples a trajectory for plotting.
 
         :param float t0: time to start trajectory dump.  If None, will
                          start with the stage for which it is called.
@@ -754,9 +754,6 @@ class FlyingStage :
         :param float dt: time interval between dumped trajectory
                          points.  Default is 5.0 seconds.
         '''
-        
-        import matplotlib
-        import matplotlib.pyplot as plt
 
         if t0 is None :
             t0 = self.solnt[0]
@@ -776,14 +773,7 @@ class FlyingStage :
             y.append( r * math.sin( th ) )
             t += dt
             
-        fig, ax = plt.subplots()
-        mpt.square_plot(ax, x, y, marker = "o")
-
-        mpt.plot_circle(ax, self.R, 100)
-        mpt.plot_circle(ax, self.R+70E3, 100)
-
-        plt.show()
-
+        return(x,y)
 #
 # Prototype Code
 #
@@ -1568,8 +1558,17 @@ def main() :
             r_soi = 2.0*o.r0
             x0_soi = d_soi*math.cos(phi_soi)
             y0_soi = d_soi*math.sin(phi_soi)
-            o.plot(ax, Rbody=6E5)
-            mpt.plot_circle(ax, r_soi, 100, x0_soi, y0_soi)
+
+            plots = [o.sample(use_t=False)]
+            plot_opts = [{"marker":"o"}]
+
+            # Sample SOI circle
+            plots.append(mpt.offset_xy(mpt.sample_circle(r_soi, 100), x0_soi, y0_soi))
+            plot_opts.append(None)
+
+            # Sample Kerbin circle
+            plots.append(mpt.sample_circle(6E5, 100))
+            plot_opts.append(None)
             
             phi_x = o.intersect_soi(phi_soi, d_soi, r_soi)
 
@@ -1581,11 +1580,16 @@ def main() :
             
                 r_x = o.y_phi(phi)[1]
 
-                x=[r_x*math.cos(phi)]
-                y=[r_x*math.sin(phi)]
+                x=r_x*math.cos(phi)
+                y=r_x*math.sin(phi)
 
-                ax.plot(x,y,marker="o")
+                plots.append([[x],[y]])
+                plot_opts.append({"marker":"o"})
+
+            xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
             
+            mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
+                
             plt.show()
 
             

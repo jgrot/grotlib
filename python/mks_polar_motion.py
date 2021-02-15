@@ -320,41 +320,6 @@ class Orbit :
     def phi_t(self, t) :
         return mm.bisect_interp(t, self.solnt, self.phivt)[0]
     
-    def plot(self, ax, use_t=False, Rbody=None) :
-        orbtype = self.classify()
-        
-        if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
-            if use_t :
-                phi_of_t = lambda t: self.phi_t(t)
-                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                maxphi = 0.9*self.phi_max
-                dphi = (maxphi - self.phi0)/100.0
-                mpt.plot_polar(ax, r_of_phi, phi_of_phi, self.phi0, dphi, maxphi, centered=True, marker="o")
-                
-        elif orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
-            if use_t :
-                phi_of_t = lambda t: self.phi_t(t)
-                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                mpt.plot_polar(ax, r_of_t, phi_of_t, 0.0, dt, maxt, centered=True, marker="o")
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                dphi = 2.0*math.pi/100.0
-                maxphi = dphi*99.0
-                mpt.plot_polar(ax, r_of_phi, phi_of_phi, 0.0, dphi, maxphi, centered=True, marker="o")
-
-        if Rbody is not None :
-            mpt.plot_circle(ax, Rbody, 100)
-            
-
     def r0_dv_to_e(self, e) :
         '''Computes *signed* delta V to change eccentricity at r0
 
@@ -365,6 +330,42 @@ class Orbit :
         '''
         v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
         return (v0_new - self.v0)
+
+    def sample(self, use_t=False) :
+        X=[]
+        Y=[]
+        
+        orbtype = self.classify()
+        
+        if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
+            if use_t :
+                phi_of_t = lambda t: self.phi_t(t)
+                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
+                dt = self.solnt[-1]/100.0
+                maxt = 99.0*dt
+                X,Y = mpt.sample_polar(r_of_t, phi_of_t, 0.0, dt, maxt)
+            else :
+                phi_of_phi = None
+                r_of_phi = lambda phi: self.y_phi(phi)[1]
+                maxphi = 0.9*self.phi_max
+                dphi = (maxphi - self.phi0)/100.0
+                X,Y = mpt.sample_polar(r_of_phi, phi_of_phi, self.phi0, dphi, maxphi)
+                
+        elif orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
+            if use_t :
+                phi_of_t = lambda t: self.phi_t(t)
+                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
+                dt = self.solnt[-1]/100.0
+                maxt = 99.0*dt
+                X,Y = mpt.sample_polar(r_of_t, phi_of_t, 0.0, dt, maxt)
+            else :
+                phi_of_phi = None
+                r_of_phi = lambda phi: self.y_phi(phi)[1]
+                dphi = 2.0*math.pi/100.0
+                maxphi = dphi*99.0
+                X,Y = mpt.sample_polar(r_of_phi, phi_of_phi, 0.0, dphi, maxphi)
+
+        return (X,Y)
 
     def y_phi( self, phi ) :
         '''Returns a polar motion state vector.

@@ -5,6 +5,7 @@ import sys
 import compare as cmp
 import ksp
 import mks_polar_motion as mpm
+import mpl_tools as mpt
 
 import json
 import math
@@ -53,8 +54,27 @@ def T2DS1ME() :
             cmp.compare_datasets( flyer.soln, soln_compare )      
         print("SUCCESS")
 
-    # flyer.plot( )
-    # flyer.dumpTraj( )    
+    if True :
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+
+        plots = [flyer.sample()]
+        plot_opts = [{"marker":"o"}]
+
+        xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
+        
+        plots.append(mpt.sample_circle(flyer.R, 100))
+        plot_opts.append(None)
+        plots.append(mpt.sample_circle(flyer.R+70, 100))
+        plot_opts.append(None)
+
+        mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
+        
+        plt.show()
+
+        flyer.dumpTraj( )    
 
 
 def T2DS2ME() :
@@ -125,9 +145,28 @@ def T2DS2ME() :
             cmp.compare_datasets( fly_s2.soln, soln_compare["stage2"] )
             cmp.compare_datasets( DV, soln_compare["DV"] )
         print("SUCCESS")
-            
-    # fly_s2.plot( t0 = 0.0, dt = 10.0 )
-    # fly_s2.dumpTraj( t0 = 0, dt = 10.0 )
+
+    if True :
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        
+        plots = [fly_s2.sample(t0=0.0, dt=10.0)]
+        plot_opts = [{"marker":"o"}]
+        
+        xmin, xmax, ymin, ymax = mpt.square_plot_bounds(plots)
+        
+        plots.append(mpt.sample_circle(fly_s2.R, 100))
+        plot_opts.append(None)
+        plots.append(mpt.sample_circle(fly_s2.R+70, 100))
+        plot_opts.append(None)
+
+        mpt.square_plots(ax, plots, xmin, xmax, ymin, ymax, plot_opts)
+        
+        plt.show()
+
+        flyer.dumpTraj( )    
 
 
 def TORBIT() :
