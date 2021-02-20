@@ -70,16 +70,169 @@ def makePolarMotionSolver( dmdt, a_r, a_th, y0, t0 ) :
 
     return solv
 
+def rth_at_xy(x, y) :
+    '''Converts from Cartesian to polar coordinates x,y -> r,th
+
+    See also: xy_at_rth()
+    '''
+
+    r = math.sqrt(x*x + y*y)
+    th = math.atan2(y,x)
+    
+    return (r, th)
+    
+def v_circular_orbit(GM, r) :
+    '''Returns v for a circular orbit of radius r.
+    '''
+    return math.sqrt(GM/r)
+
+def vrth_at_th(v_x, v_y, th) :
+    '''Converts a vector in Cartesian coordinates to polar coordinates.
+
+    The Cartesian coordinate system is defined such that th is wrt to the x axis.
+
+    :param float v_x: a vector x-component
+    :param float v_th: a vector y-component
+    :param float th: (radians) the angle of the location of the point at which the vector originates
+    '''
+    v_r  =  v_x*math.cos(th) + v_y*math.sin(th)
+    v_th = -v_x*math.sin(th) + v_y*math.cos(th)
+
+    return (v_r, v_th)
+
+    
+def vxy_at_th(v_r, v_th, th) :
+    '''Converts a vector in polar coordinates to Cartesian coordinates.
+
+    The Cartesian coordinate system is defined such that th is wrt to the x axis.
+
+    :param float v_r: a vector component in the r direction
+    :param float v_th: a vector component in the th direction
+    :param float th: (radians) the angle of the location of the point at which the vector originates
+    '''
+    v_x = v_r*math.cos(th) - v_th*math.sin(th)
+    v_y = v_r*math.sin(th) + v_th*math.cos(th)
+
+    return (v_x, v_y)
+
+def xy_at_rth(r, th) :
+    '''Polar coordinates r,th -> x,y
+
+    See also rth_at_xy()
+    '''
+    x = r*math.cos(th)
+    y = r*math.sin(th)
+    
+    return (x, y)
+
+
+class Frame2D :
+    '''A 2D reference frame
+
+    :param Frame2D parent: A parent Frame2D object, or None
+
+    A parent frame of None implies the "grand" coordinate system.
+
+    Currently assumes all reference frames are axis aligned:
+
+    - Velocities in x,y don't need transforming
+    - To transform a velocity (vx,vy) to polar in the ref frame:
+      1. Call r,th = frm.xform_pos_to('c'|'p', x|r, y|th, 'p') where (vx,vy) is the velocity at the pos
+      2. Call vfx, vfy = frm.xform_vel_to(vx, vy)
+      2. Call vr, vth = vrth_at_th(vfx, vfy, th)
+
+    '''
+
+    def __init__(self, parent=None):
+        self.parent = parent
+        # Coordinates and velocity in parent frame
+        self.x = None
+        self.y = None
+        self.r = None
+        self.th = None
+        self.vx = None
+        self.vy = None
+
+    def set_rth(self, r, th) :
+        self.r = r
+        self.th = th
+        self.x, self.y = xy_at_rth(r, th)
+        
+    def set_xy(self, x, y) :
+        self.x = x
+        self.y = y
+        self.r, self.th = rth_at_xy(x, y)
+
+    def set_vrth(self, vr, vth) :
+        '''Given vr and vth in the parent frame, computes vx and vy in the parent frame'''
+        if self.th is None :
+            raise Exception("Must first set position of reference frame.")
+        
+        self.vx, self.vy = vxy_at_th(vr, vth, self.th)
+
+    def set_vxy(self, vx, vy) :
+        self.vx = vx
+        self.vy = vy
+
+    def xform_pos_to(self, c_in, z1, z2, c_out) :
+        '''Transforms position from parent to this frame
+
+        :param string c_in: Input coordinate sys: 'p' - polar, 'c' - Cartesian
+        :param float z1: First component of input coordinate
+        :param float z2: Second component of input coordinate
+        :param string c_out: Output coordinate sys: 'p' - polar, 'c' - Cartesian
+        '''
+
+        if self.parent is not None :
+            raise Exception("TODO: incorporate parent frame")
+
+        # Convert to parent x,y
+
+        if c_in == 'p' :
+            x_in, y_in = xy_at_rth(z1, z2)
+        else :
+            x_in = z1
+            y_in = z2
+
+        # Convert to this ref frame
+        
+        x = x_in - self.x
+        y = y_in - self.y
+
+        # Return requested coordinates
+
+        if c_out == 'p' :
+            z1_out, z2_out = rth_at_xy(x, y)
+        else :
+            z1_out = x
+            z2_out = y
+
+        return (z1_out, z2_out)
+
+    def xform_vel_to(self, vx, vy) :
+        if self.vx is None :
+            raise Exception("Must set frame velocity")
+        
+        vfx = vx - self.vx
+        vfy = vy - self.vy
+
+        return (vfx, vfy)
+                     
 class Orbit :
     '''Parameterized orbit under a gravitational force initialized by a
        trajectory point anywhere along the orbit.
 
-    Parameterizes by "phi" such that phi=0 is at the periapsis.
-
-    self.phi0 represents phi at the initialization point.
-
     :param list y: makePolarMotionSolver variables [ m(kg), r(m), th(radians), vr(m/s), om(rad/s) ]
     :param float GM: body GM
+
+    :Conventions:
+
+    phi is the polar angle in the coordinate system of the orbit with r0 at phi=0
+
+    phi_i is the orbit angle of the "intertion point", i.e. the point
+    which is used to initialize the orbit
+
+    :See also: OrientedOrbit
 
     Some orbit equations:
 
@@ -116,7 +269,8 @@ class Orbit :
     ORB_ORBITS = ( 'circle', 'ellipse', 'parabola', 'hyperbola' )
     
     def __init__(self, y, GM, force=None) :
-        
+
+        # Note: th is ignored here, but used in OrientedOrbit
         m, r, th, vr, om = y
 
         if force is not None :
@@ -149,25 +303,27 @@ class Orbit :
         self.v0 = v0
         self.r1 = r1
 
-        # PHI0
+        # Compute phi_i (-pi <= phi_i <= pi)
+        
         if e > 0.0 :
             # Not a circle
             x1 = 1.0 / e
             x2 = (r0/r)*(1.0 + e)
             x3 = x1*(x2 - 1.0)
             if x3 >= 1.0 :
-                phi0 = 0.0
+                phi_i = 0.0
             elif x3 <= -1.0 :
-                phi0 = -math.pi
+                phi_i = -math.pi
             else :
-                phi0 = math.acos(x3)
+                phi_i = math.acos(x3)
                 if vr < 0.0 :
-                    phi0 = 2.0*math.pi - phi0
+                    phi_i = mm.home_angle(2.0*math.pi - phi_i)
             
-            self.phi0 = phi0
+            self.phi_i = phi_i
+
         else :
             # Circle
-            self.phi0 = 0.0
+            self.phi_i = 0.0
 
         # PERIOD
         if e < 1.0 :
@@ -204,21 +360,29 @@ class Orbit :
 
                 self.phivt.append( list(phi) )
                 self.solnt.append( solv.t )
+
+            self.phi_max = math.inf
+            self.phi_min = -math.inf
                 
         elif orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
-            
+
             self.phi_max = math.acos(-1.0/self.e)
             self.phi_min = -self.phi_max
 
-            solv.set_initial_value( self.phi0, 0.0 )
+            if self.phi_i > self.phi_max :
+                raise Exception("Logic Error:  phi_i > phi_max")
+            if self.phi_i < self.phi_min :
+                raise Exception("Logic Error:  phi_i < phi_min")
+            
+            solv.set_initial_value( self.phi_i, 0.0 )
 
-            self.phivt = [ [self.phi0] ]
+            self.phivt = [ [self.phi_i] ]
             self.solnt = [ 0.0 ]
 
             dt = 0.1
             phi = 0.0
             
-            while solv.successful() and solv.t < 1000.0 :
+            while solv.successful() and solv.t < 10000.0 :
                 phi = solv.integrate( solv.t + dt )
 
                 self.phivt.append( list(phi) )
@@ -252,6 +416,7 @@ class Orbit :
         :param float d_soi: distance of new SOI from center of current SOI body.
         :param float r_soi: radius of new SOI.
 
+        :returns: list [<intersection phi's>]
         '''
 
         # Angle from center of SOI to edge of SOI
@@ -318,6 +483,15 @@ class Orbit :
             sign *= -1.0
 
     def phi_t(self, t) :
+        '''UNDER CONSTRUCTION
+
+        :Todo:
+
+        - Negative t?
+        - Modulo t for circle and ellipse
+        - For parabola and hyperbola, propagate like ksp.FlyingStage where the time series is interpolated and extended as needed
+
+        '''
         return mm.bisect_interp(t, self.solnt, self.phivt)[0]
     
     def r0_dv_to_e(self, e) :
@@ -331,43 +505,22 @@ class Orbit :
         v0_new = math.sqrt(self.GM*(1.0 + e)/self.r0)
         return (v0_new - self.v0)
 
-    def sample(self, use_t=False) :
-        X=[]
-        Y=[]
-        
-        orbtype = self.classify()
-        
-        if orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
-            if use_t :
-                phi_of_t = lambda t: self.phi_t(t)
-                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                X,Y = mpt.sample_polar(r_of_t, phi_of_t, 0.0, dt, maxt)
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                maxphi = 0.9*self.phi_max
-                dphi = (maxphi - self.phi0)/100.0
-                X,Y = mpt.sample_polar(r_of_phi, phi_of_phi, self.phi0, dphi, maxphi)
-                
-        elif orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
-            if use_t :
-                phi_of_t = lambda t: self.phi_t(t)
-                r_of_t = lambda t : self.y_phi( self.phi_t(t) )[1]
-                dt = self.solnt[-1]/100.0
-                maxt = 99.0*dt
-                X,Y = mpt.sample_polar(r_of_t, phi_of_t, 0.0, dt, maxt)
-            else :
-                phi_of_phi = None
-                r_of_phi = lambda phi: self.y_phi(phi)[1]
-                dphi = 2.0*math.pi/100.0
-                maxphi = dphi*99.0
-                X,Y = mpt.sample_polar(r_of_phi, phi_of_phi, 0.0, dphi, maxphi)
+    def sample_phi(self, PHI) :
+        '''Generates a series of r values for an input series of polar angles.
 
-        return (X,Y)
+        :param iterable PHI: A list of polar angles
 
-    def y_phi( self, phi ) :
+        :returns: A list of r values
+        '''
+        R = []
+        for phi in PHI :
+            if phi > self.phi_max or phi < -self.phi_max :
+                raise Exception("PHI out of range")
+            R.append(self.y_phi(phi)[1])
+
+        return R
+
+    def y_phi(self, phi) :
         '''Returns a polar motion state vector.
         '''
         
@@ -387,7 +540,7 @@ class Orbit :
         vrsq = vsq - vphi*vphi
 
         if vrsq < 0.0 :
-            print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq, " PHI ", phi)
+            # print("WARNING VR^2 IS < 0.  HOPEFULLY, JUST A ROUNDING ERROR: ", vrsq, " PHI ", phi)
             vrsq = 0.0
         
         vr = math.sqrt( vrsq )
@@ -396,3 +549,56 @@ class Orbit :
             vr = -vr
         
         return [ self.m, r, phi, vr, om ]
+
+
+class OrientedOrbit(Orbit) :
+    '''An Orbit, oriented in the reference frame of the insertion point.
+    Currently still in the same plane as an Orbit, but with r0
+    positioned at th0 in the outer frame. th0 is automatically
+    computed from the insertion point.
+
+    :Conventions:
+        
+    phi is the polar angle in the coordinate system of the orbit with r0 at phi=0
+
+    theta (or th) is the polar angle in the "outer" coordinate system
+        
+    phi_i is the orbit angle of the "intertion point", i.e. the point
+    which is used to initialize the orbit
+        
+    th_i is the "outer" coordinate system angle of the intertion point
+        
+    th0 is the angle of r0 in the "outer" coordinate system.
+        
+    In general th = phi + th0
+        
+    th0 = th_i - phi_i
+        
+    So, r(th) = Orbit.r(th - th0)
+
+    :See also: Orbit
+
+    '''
+    
+    def __init__(self, y, GM) :
+        
+        super().__init__(y, GM)
+
+        m, r, th_i, vr, om = y
+        
+        self.th0 = th_i - self.phi_i
+
+    def intersect_soi(self, th_soi, d_soi, r_soi):
+        phi_x = super().intersect_soi(self.phi(th_soi), d_soi, r_soi)
+        th_x = [phi + self.th0 for phi in phi_x]
+        return th_x
+        
+    def sample_th(self, TH) :
+        PH = [self.phi(th) for th in TH]
+        return self.sample_phi(PH)
+        
+    def phi(self, th) :
+        return (th - self.th0)
+
+    def y_th(self, th):
+        return self.y_phi(self.phi(th))

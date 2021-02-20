@@ -69,14 +69,16 @@ bodies_db = {
         "GM" : (3.53E12, "m3/s2"),
         "R"  : (600E3, "m"),
         "satellites" : {
-            "Mun"    : (11.4, "Mm"),
-            "Minmus" : (46.4, "Mm")
+            "Mun"    : (11.4+.6, "Mm"),
+            "Minmus" : (46.4+.6, "Mm")
         },
         "tday" : (6.0, "h"),
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
         "R"  : (200E3, "m"),
+        "VORB"  : (542.5, "m/s"),
+        "SOI" : (2430, "km")
     },
     "Minmus" : {
         "GM" : (1.766E9, "m3/s2"),
@@ -174,7 +176,7 @@ nosecone_db = {
     
 }
 
-def augmentBodyDbs( ) :
+def augmentBodyDbs() :
     '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
     
     for body_key in bodies_db :
@@ -185,7 +187,7 @@ def augmentBodyDbs( ) :
                 extra_dat = json.load(f)
                 bodies_db[body_key].update( extra_dat )
 
-def processBodyDbs( ) :
+def processBodyDbs() :
     '''Pre-processes bodies_db data.
     '''
     
@@ -201,17 +203,34 @@ def processBodyDbs( ) :
             bodyrec["fpress"] = mm.Interp1DFunctor( alts, ps, kind="quadratic" )
             bodyrec["fsnd"] = mm.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
 
+        if "satellites" in bodyrec :
+
+            for sat in bodyrec["satellites"] :
+                d, du = bodyrec["satellites"][sat]
+                d_m = d * uconv(dist_db, du, "m")
+                
+                satrec = bodies_db[sat]
+
+                try :
+                    vo, vou = satrec["VORB"]
+                    if vou != "m/s" :
+                        raise Exception("TODO: speed_db")
+                    om = vo/d_m
+                    satrec["rev_om"] = om
+                except :
+                    pass
+
 #
 # Drag Divergence
 #
 
-class DragDivergence( mm.Functor ) :
+class DragDivergence(mm.Functor) :
 
-    def __init__( self, c0=3.0, c1=10.0, c2=0.71 ) :
+    def __init__(self, c0=3.0, c1=10.0, c2=0.71) :
         rangemin = [0.0]
         rangemax = [20.0]
         
-        super().__init__( rangemin, rangemax )
+        super().__init__(rangemin, rangemax)
 
         # Formula parameters
         self.c0 = c0 # Currently, like amplitude
@@ -249,13 +268,16 @@ class Stage :
     :param float dragco: currently lumped term of 1/2*Cd*A
     '''
     
-    def __init__( self, m0 = None, engines = [], dragco = 0.0 ) :
+    def __init__(self, m0 = None, engines = [], dragco = 0.0) :
         self.m0 = m0
         self.engines = engines
         self.dragco = dragco
 
+        # Function cacheing
+        self._dv_v_m_p = None
+
         if m0 is not None :
-            self._assimilate( )
+            self._assimilate()
 
     def _assimilate( self ) :
         '''(private) Perform all pre-processing based on input parameters.
@@ -263,8 +285,41 @@ class Stage :
         Call this function when top level input params change.
         '''
         self._processEngines()
+
+    def _dv_v_m(self, p_Pa) :
+        '''Generates a DV node for each node in self.mass_nodes
+
+        TODO: ascii art for the dv v m graph from rocket book note "RB 2021-01-30 04.15.00.pdf"
+        '''
+
+        if (p_Pa == self._dv_v_m_p) :
+            # Already have the table for p (most likely at p=0)
+            return
         
-    def _processEngines( self ) :
+        vac = (C_p0 - p_Pa) / C_p0
+
+        # One for each mass node
+        self.dv_nodes = [0.0]
+        
+        for imass in range(1, len(self.mass_nodes)) :
+            
+            rate_rec = self.rate_edges[imass-1]
+
+            sum_rate_kgps = 0.0
+            sum_thrust = 0.0
+
+            for rate_kgps, isl, iva in rate_rec :
+                isp = (1.0 - vac)*isl + vac*iva
+                sum_rate_kgps += rate_kgps
+                sum_thrust += (rate_kgps * isp)
+
+            isp_eqv = sum_thrust / sum_rate_kgps
+
+            dv_phase = isp_eqv * math.log(self.mass_nodes[imass] / self.mass_nodes[imass-1])
+            
+            self.dv_nodes.append(dv_phase + self.dv_nodes[imass-1])
+        
+    def _processEngines(self) :
         '''(private) Preprocess engine data.'''
 
         engines_by_t_burn = []
@@ -297,7 +352,7 @@ class Stage :
         engines_by_t_burn.sort()
         engines_by_t_burn.reverse()
 
-        self.mass_nodes = [0.0]
+        self.fmass_nodes = [0.0]
         self.rate_edges = []
         rate_kgps_sum = 0.0
         rate_rec = []
@@ -341,14 +396,17 @@ class Stage :
             rate_rec.append( (rate_kgps, ispsl_mps, ispvac_mps) )
 
             self.rate_edges.append( copy.copy(rate_rec) )
-            self.mass_nodes.append( self.mass_nodes[-1] + DT*rate_kgps_sum )
+            self.fmass_nodes.append( self.fmass_nodes[-1] + DT*rate_kgps_sum )
 
+        self.engines_by_tburn = engines_by_t_burn
+        
         m0, m0u = self.m0
         m0_kg = m0 * uconv( mass_db, m0u, "kg" )
-        
         self.m0_kg = m0_kg
         # Empty stage mass (kg)
-        self.me_kg = m0_kg - self.mass_nodes[-1]
+        self.me_kg = m0_kg - self.fmass_nodes[-1]
+        # Stage mass nodes
+        self.mass_nodes = [ self.me_kg + m for m in self.fmass_nodes ]
         
     def dmdt( self, mstage_kg, throttle ) :
         '''Compute stage dm/dt vs firing phase (via stage mass) and throttle level
@@ -365,7 +423,7 @@ class Stage :
 
         # Find largest left-bracketing record
         for i in reversed(range(len(self.rate_edges))) :
-            if mfuel_kg >= self.mass_nodes[i] :
+            if mfuel_kg >= self.fmass_nodes[i] :
                 rec = self.rate_edges[i]
                 break
             
@@ -377,66 +435,119 @@ class Stage :
 
     def dumpInfo( self ) :
 
-        print()
-        
-        tabrows = [ [ "Initial mass (kg)", self.m0_kg ],
-                    [ "Empty mass (kg)", self.me_kg] ]
+        tabrows = [ ["Initial mass (kg)", self.m0_kg],
+                    ["Empty mass (kg)", self.me_kg],
+                    ["Drag term", self.dragco]
+                   ]
+        print("\n###")
+        print("### STAGE INFO")
+        print("###\n")
         print(tabulate.tabulate(tabrows, headers=["Parameter", "Value"]))
-        print()
         
-        tabrows = [[self.mass_nodes[0], None]]
-        for i in range(len(self.rate_edges)) :
-            tabrows.append( [ None, self.rate_edges[i] ] )
-            tabrows.append( [ self.mass_nodes[i+1], None ] )
-        print(tabulate.tabulate(tabrows, headers=["Stage Mass", "Rate Record"]))
+        tabrows = []
+        for iburn, rate_rec in enumerate(self.rate_edges) :
+            row = []
+            m1 = self.fmass_nodes[iburn]
+            m0 = self.fmass_nodes[iburn+1]
+
+            ilast_eng = len(rate_rec)-1
+            t_burn = self.engines_by_tburn[ilast_eng][0]
+            
+            row.append(t_burn)
+            row.append(m0)
+            row.append(m1)
+
+            for ieng, rate in enumerate(rate_rec) :
+                t_burn, n_eng, engine = self.engines_by_tburn[ieng]
+                rate_tot, isp_sl, isp_vac = rate
+                # row.append(t_burn)
+                row.append(n_eng)
+                row.append(engine["name"])
+                row.append(rate_tot)
+                row.append(isp_sl)
+                row.append(isp_vac)
+                
+            tabrows.append(row)
+            
+        tabrows.reverse()
+
+        maxlen = 0
+        for tabrow in tabrows :
+            maxlen = max(maxlen, len(tabrow))
+
+        headers = [""]*maxlen
+        headers[0] = "Burn Time(s)"
+        headers[1] = "Fuel M0"
+        headers[2] = "Fuel M1"
+
+        nengrec = int((maxlen-3)/5)
+        for ieng in range(nengrec) :
+            i = 3+(ieng*5)
+            headers[i] = "N Eng"
+            headers[i+1] = "Eng"
+            headers[i+2] = "Rate Tot"
+            headers[i+3] = "ISP SL"
+            headers[i+4] = "ISP Vac"
+
+        print("\n###")
+        print("### STAGE ENGINE BURN SCHEDULE")
+        print("###\n")
+        print(tabulate.tabulate(tabrows, headers=headers))
+        
         print()
 
-    def dvRemain( self, mstage_kg, p_Pa ) :
+    def dumpJSON( self, fname ) :
+        '''Save initial parameters to a JSON file.
+        '''
+        
+        data = { "m0" : self.m0,
+                 "elist" : self.engines,
+                 "dragco" : self.dragco
+                 }
+        
+        with open( fname, "wt" ) as f :
+            json.dump( data, f )
+
+    def dv_at_m( self, mstage_kg, p_Pa ) :
         '''Compute remaining Delta-V given firing phase (via stage mass) and ambient pressure.
 
         :param float mstage_kg: Stage mass in kg
         :param float p_pA: ambient pressure in Pascals
         '''
-        ### See rocket book note "RB 2021-01-30 04.15.00.pdf"
 
         if mstage_kg <= self.me_kg :
             return 0.0
+
+        self._dv_v_m(p_Pa)
+
+        return mm.bisect_interp(mstage_kg, self.mass_nodes, self.dv_nodes)
+
+    def loadJSON( self, fname ) :
+        '''Load initial parameters from a JSON file and pre-process.
+        '''
+
+        with open( fname, "rt" ) as f :
+            data = json.load( f )
+            self.m0 = data["m0"]
+            self.engines = data["elist"]
+            self.dragco = data["dragco"]
+            self._assimilate( )        
+
+    def m_at_dv(self, dv_stage, p_Pa) :
+        '''Compute stage mass given firing phase (via dv) and ambient pressure.
+
+        :param float dv_stage: Remaining DV in m/s
+        :param float p_pA: Ambient pressure in Pascals
+        '''
+
+        if dv_stage <= 0.0 :
+            return self.me_kg
+
+        # Regenerate table if necessary
+        self._dv_v_m(p_Pa)
         
-        vac = (C_p0 - p_Pa) / C_p0
-
-        # Mass of vehicle (at fuel mass nodes)
-        MSTAGE = [ self.me_kg + m for m in self.mass_nodes ]
-        # One for each mass node
-        DV = [0.0]
-        
-        for i in range(1, len(MSTAGE)) :
+        return mm.bisect_interp(dv_stage, self.dv_nodes, self.mass_nodes)
             
-            rate_rec = self.rate_edges[i-1]
-
-            sum_rate_kgps = 0.0
-            sum_thrust = 0.0
-
-            for rate_kgps, isl, iva in rate_rec :
-                isp = (1.0 - vac)*isl + vac*iva
-                sum_rate_kgps += rate_kgps
-                sum_thrust += (rate_kgps * isp)
-
-            isp_eqv = sum_thrust / sum_rate_kgps
-
-            dv_phase = isp_eqv * math.log( MSTAGE[i] / MSTAGE[i-1] )
-            
-            DV.append( dv_phase + DV[i-1] )
-
-            # If input stage mass falls within the current firing
-            # phase, then interpolate the answer and we're done.
-            if mstage_kg >= MSTAGE[i-1] and mstage_kg <= MSTAGE[i] :
-                a = ( mstage_kg - MSTAGE[i-1] ) / ( MSTAGE[i] - MSTAGE[i-1] )
-                return DV[i-1]*(1.0-a) + DV[i]*a
-
-        # If we get here then it probably means this is a later
-        # (ligther) stage being queried for its available DV.
-        return DV[-1]
-
     def thrust( self, mstage_kg, throttle, p_Pa ) :
         '''Thrust of stage given firing phase (via stage mass), throttle, and ambient pressure.
 
@@ -454,7 +565,7 @@ class Stage :
 
         # Find largest left-bracketing record
         for i in reversed(range(len(self.rate_edges))) :
-            if mfuel_kg >= self.mass_nodes[i] :
+            if mfuel_kg >= self.fmass_nodes[i] :
                 rec = self.rate_edges[i]
                 break
         
@@ -464,28 +575,6 @@ class Stage :
                 
         return thrust
     
-    def loadJSON( self, fname ) :
-        '''Load initial parameters from a JSON file and pre-process.
-        '''
-
-        with open( fname, "rt" ) as f :
-            data = json.load( f )
-            self.m0 = data["m0"]
-            self.engines = data["elist"]
-            self.dragco = data["dragco"]
-            self._assimilate( )        
-        
-    def dumpJSON( self, fname ) :
-        '''Save initial parameters to a JSON file.
-        '''
-        
-        data = { "m0" : self.m0,
-                 "elist" : self.engines,
-                 "dragco" : self.dragco
-                 }
-        
-        with open( fname, "wt" ) as f :
-            json.dump( data, f )
 
 class FlyingStage :
     '''A Stage in the context of a body which provides functions needed for plane-polar trajectory.
@@ -621,9 +710,9 @@ class FlyingStage :
             x = ( r * math.cos( th ) )
             y = ( r * math.sin( th ) )
 
-            craft_asl_dvremain = flyer.dvRemain( m, C_p0 )
-            craft_dvremain = flyer.dvRemain( m, flyer.fpress.call(r-flyer.R)[0] )
-            stage_dvremain = flyer.stage.dvRemain( m, C_p0 )
+            craft_asl_dvremain = flyer.dv_at_m( m, C_p0 )
+            craft_dvremain = flyer.dv_at_m( m, flyer.fpress.call(r-flyer.R)[0] )
+            stage_dvremain = flyer.stage.dv_at_m( m, C_p0 )
 
             vom_gnd = r*om_gnd
             spd_gnd = math.sqrt( vr*vr + vom_gnd*vom_gnd )
@@ -644,17 +733,17 @@ class FlyingStage :
         
         print( tabulate.tabulate( rowdat, headers = headers) )
 
-    def dvRemain( self, mcraft_kg, p_Pa ) :
+    def dv_at_m( self, mcraft_kg, p_Pa ) :
         '''Compute remaining Delta-V given firing phase (via craft mass) and ambient pressure.
 
         :param float mcraft_kg: Stage mass in kg
         :param float p_pA: ambient pressure in Pascals
         '''
         
-        mydv = self.stage.dvRemain( mcraft_kg, p_Pa )
+        mydv = self.stage.dv_at_m( mcraft_kg, p_Pa )
 
         if self.sp1 is not None :
-            return mydv + self.sp1.dvRemain( mcraft_kg, p_Pa )
+            return mydv + self.sp1.dv_at_m( mcraft_kg, p_Pa )
         else :
             return mydv        
 
@@ -908,10 +997,11 @@ def analyzeRocket(rocket_def) :
 def dInterp(term, dunit="m") :
     '''General distance interpreter.
 
-    Allowed terms are:
+    Terms are separated by spaces and therefore must not contain
+    spaces.  Valid terms are:
 
     1. Regular value, units list or tuple pair
-    2. String: D('body1', 'body2')
+    2. String: D('body1','body2')
     3. String: R('body')
     4. String containing all valid terms above separated by operators
 

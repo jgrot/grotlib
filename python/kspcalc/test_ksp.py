@@ -124,9 +124,9 @@ def T2DS2ME() :
     while t <= fly_s2.solnt[-1] :
         Y, crashed, flyer = fly_s2.flyTo( t )
         m, r, th, vr, om = Y
-        craft_asl_dvremain = flyer.dvRemain( m, ksp.C_p0 )
-        craft_dvremain = flyer.dvRemain( m, flyer.fpress.call(r-flyer.R)[0] )
-        stage_asl_dvremain = flyer.stage.dvRemain( m, ksp.C_p0 )
+        craft_asl_dvremain = flyer.dv_at_m( m, ksp.C_p0 )
+        craft_dvremain = flyer.dv_at_m( m, flyer.fpress.call(r-flyer.R)[0] )
+        stage_asl_dvremain = flyer.stage.dv_at_m( m, ksp.C_p0 )
         DV.append( (craft_asl_dvremain, craft_dvremain, stage_asl_dvremain) )
         t += 10
     

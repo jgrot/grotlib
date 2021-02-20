@@ -32,14 +32,16 @@ class RangeError( Exception ) :
 
 
 def bisect_interp(t, tseries, yseries) :
-    '''Utility function for interpolating traj solutions vs t.
+    '''Utility function for interpolating a vector of values on an input parameter
     
     :param float t: input value of parameter
     :param list tseries: array of parameter values corresponding to each element of yseries.
-    :param list yseries: array of iterable of y values (any dimensionality).
+    :param list yseries: array of iterable of y values (any dimensionality), or scalars.
 
-    :Rationale: bisect is used in case a non-uniform time interval is used.
+    :Rationale: bisect is used in case a non-uniform parameter series is used.
     '''
+
+    y_is_scalars = (not type_tools.isIterableNonString(yseries[0]))
     
     i = (bisect.bisect( tseries, t ) - 1)
     if i == len(tseries)-1 :
@@ -49,8 +51,12 @@ def bisect_interp(t, tseries, yseries) :
     a = (t - t0)/(t1 - t0)
     y0 = yseries[i]
     y1 = yseries[i+1]
-    y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
-    
+
+    if y_is_scalars :
+        y = (1.0 - a)*y0 + a*y1
+    else :
+        y = [ (1.0 - a)*y0[j] + a*y1[j] for j in range(len(y0)) ]
+
     return y
 
 #

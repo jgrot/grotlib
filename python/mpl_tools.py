@@ -35,48 +35,23 @@ def sample_circle(r, n) :
     '''
 
     # Last point will overlap to close the circle
-    dth = 2.0*math.pi / (n+1)
-    maxth = 2.0*math.pi
+    dth = 2.0*math.pi / (n-1)
+
+    TH = [ i*dth for i in range(n) ]
+    R  = [ r for i in range(n) ]
+
+    return polar_to_xy(R, TH)
     
-    return(sample_polar(lambda th: r, lambda th: th, 0, dth, maxth))
+def polar_to_xy(R, TH) :
+    X = []
+    Y = []
 
-def sample_polar(r_of_z, th_of_z, z0, dz, max_z) :
-    '''Sample a polar function.
-
-    :param float r_of_z: Radius as a function of parameter z
-    :param float th_of_z: Theta as a function of parameter z.  If None, then th = z
-    :param float z0: Parameter z initial value
-    :param float dz: Parameter z intervals
-    :param float max_z: Maximum value of z
-
-    :returns: ``tuple( tuple(<x values>), tuple(<y values>) )``
-    '''
-
-    X=[]
-    Y=[]
-    
-    iz = 0.0
-
-    while True:
-        
-        z = z0 + dz*iz
-
-        if z > max_z :
-            break
-        else :
-            iz += 1.0
-
-        r = r_of_z(z)
-
-        if th_of_z is None :
-            th = z
-        else :
-            th = th_of_z(z)
-            
+    for i, r in enumerate(R) :
+        th = TH[i]
         X.append(r*math.cos(th))
         Y.append(r*math.sin(th))
 
-    return (tuple(X), tuple(Y))
+    return (X, Y)
 
 def square_plot_bounds(plots) :
     '''Computes params for centering a bunch of plots in a square (presumably aspect ratio 1.0) plot.
