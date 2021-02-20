@@ -285,7 +285,14 @@ class Orbit :
         h = r*r*om
         vsq = vr*vr + h*om
         E = 0.5*m*vsq - (k/r)
-        e = math.sqrt(1.0 + 2.0*E*m*h*h/(k*k))
+        x1 = 1.0 + 2.0*E*m*h*h/(k*k)
+        try :
+            e = math.sqrt(x1)
+        except :
+            if abs(x1) < 1E-14 :
+                e = 0
+            else :            
+                raise Exception("Attempt to take sqrt(%e)" % x1)
         r0 = m*h*h/(k*(1.0 + e))
         v0 = h/r0
         if e < 1.0 :
@@ -600,5 +607,10 @@ class OrientedOrbit(Orbit) :
     def phi(self, th) :
         return (th - self.th0)
 
+    def th_at_phi(self, phi) :
+        return (phi + self.th0)
+
     def y_th(self, th):
-        return self.y_phi(self.phi(th))
+        Y = self.y_phi(self.phi(th))
+        Y[2] = self.th_at_phi(Y[2])
+        return Y
