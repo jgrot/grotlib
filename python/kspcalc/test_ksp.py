@@ -31,14 +31,14 @@ def T2DS1ME() :
         return 1.0
     def falpha( t, y, flyer ) :
         m, r, th, vr, om = y
-        vth = r*om
+        vth = om/r
         if r < (flyer.R+7.5E3) :
-            return 0.5 * math.pi
-        if vth == 0.0 :
-            a = 0.5 * math.pi
+            n = (1.0, 0.0)
+        elif vth == 0.0 :
+            n = (1.0, 0.0)
         else :
-            a = math.atan( vr / vth )
-        return a
+            v,n = mpm.v_and_dir(y)
+        return n
     
     flyer = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
     flyer.launch( )
@@ -103,13 +103,12 @@ def T2DS2ME() :
     def fthrottle( t, y ) :
         return 1.0
     def falpha( t, y, flyer ) :
-        m, r, th, vr, om = y
-        vth = r*om
+        r = y[1]
         if r < (flyer.R+30.0E3) :
-            return 0.5 * math.pi
+            n = (1.0, 0.0)
         else :
-            a = math.atan( vr / vth )
-        return a
+            v, n = mpm.v_and_dir(y)
+        return n
     
     fly_s1 = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
     fly_s1.launch( )

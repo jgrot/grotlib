@@ -86,6 +86,18 @@ def v_circular_orbit(GM, r) :
     '''
     return math.sqrt(GM/r)
 
+def v_and_dir(y) :
+    '''Given polar trajectory point y, compute velocity direction vector
+    in polar coordinates'''
+    
+    m, r, th, vr, om = y
+
+    vth = r*om
+
+    v = math.sqrt(vr*vr + vth*vth)
+
+    return (v, (vr/v, vth/v))
+    
 def vrth_at_th(v_x, v_y, th) :
     '''Converts a vector in Cartesian coordinates to polar coordinates.
 
@@ -99,7 +111,6 @@ def vrth_at_th(v_x, v_y, th) :
     v_th = -v_x*math.sin(th) + v_y*math.cos(th)
 
     return (v_r, v_th)
-
     
 def vxy_at_th(v_r, v_th, th) :
     '''Converts a vector in polar coordinates to Cartesian coordinates.
@@ -614,3 +625,4 @@ class OrientedOrbit(Orbit) :
         Y = self.y_phi(self.phi(th))
         Y[2] = self.th_at_phi(Y[2])
         return Y
+

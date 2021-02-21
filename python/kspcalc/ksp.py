@@ -909,14 +909,14 @@ class FlyingStage :
     :param string stage_name: Arbitrary name for flying stage
     :param string body_name: name of solar system body about which stage is flying
     :param function fthrottle: function( t, y ) -> 0-1
-    :param function falpha: function( t, y, FlyingStage ) -> angle relative to body normal, RHR applies
+    :param function fthrustdir: function( t, y, FlyingStage ) -> (n_r, n_th)
     '''
-    def __init__( self, stage, stage_name, body_name, fthrottle, falpha ) :
+    def __init__( self, stage, stage_name, body_name, fthrottle, fthrustdir ) :
         self.stage = stage
         self.stage_name = stage_name
         self.body_name  = body_name
         self.fthrottle = fthrottle
-        self.falpha = falpha
+        self.fthrustdir = fthrustdir
         self.sm1 = None # Previous stage
         self.sp1 = None # Next stage
 
@@ -950,7 +950,7 @@ class FlyingStage :
         v = math.sqrt(vr*vr + vthb*vthb)
         M = v/self.fsnd.call(alt)[0]
         
-        return ( ( self._thrust(t, y) * math.sin( self.falpha(t, y, self) ) / m )
+        return ( ( self._thrust(t, y) * self.fthrustdir(t, y, self)[0] / m )
                  - self.GM/(r*r) - self.stage.dragco * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
 
     def _a_th( self, t, y ) :
@@ -971,7 +971,7 @@ class FlyingStage :
                 
         vth = r*om
         alt = r - self.R
-        return ( ( self._thrust(t, y) * math.cos( self.falpha(t, y, self) ) / m )
+        return ( ( self._thrust(t, y) * self.fthrustdir(t, y, self)[1] / m )
                  - self.stage.dragco * dd.call(M)[0] * abs(vthb) * vthb * self.fdens.call(alt)[0]/m )
     
     def _dmdt( self, t, y ) :
@@ -1525,10 +1525,10 @@ def main() :
         
         def fthrottle( t, y ) :
             return 1.0
-        def falpha( t, y, flyer ) :
+        def fthrustdir( t, y, flyer ) :
             return 0.5 * math.pi
 
-        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, falpha )
+        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, fthrustdir )
         flyer.launch( )
 
         flyer.dumpTraj(t1 = 30000, dt = 1.0)

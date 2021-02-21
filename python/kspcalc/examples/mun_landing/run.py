@@ -40,10 +40,19 @@ if __name__ == "__main__" :
     
     # A FlyingStage is used when there are non-central forces acting on the stage.
     def fthrottle(t, y) :
-        return 0.1
+        m, r, th, vr, om = y
+
+        v, n = mpm.v_and_dir(y)
+
+        if v > 10.0 :
+            return min(1.0, 0.0003*(v-10.0))
+        else :
+            return 0.0
     
     def falpha(t, y, fs) :
-        return 0.0
+        v, n = mpm.v_and_dir(y)
+        retro = (-n[0], -n[1])
+        return retro
     
     fs2 = ksp.FlyingStage(s2, "fs2", "Mun", fthrottle, falpha)
     fs2_h0 = 8000.0 # meters
@@ -53,7 +62,7 @@ if __name__ == "__main__" :
     fs2.launch(y_init)
 
     # Plot trajectory
-    fs2_XY = fs2.sample(0.0, 5*60.0, 5.0)
+    fs2_XY = fs2.sample(0.0, 100*60.0, 5.0)
     plots.append(fs2_XY)
     plot_opts.append({"marker":"o"})
     # Bbox surrounds fs2 traj
