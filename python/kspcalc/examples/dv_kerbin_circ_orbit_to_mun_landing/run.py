@@ -21,6 +21,8 @@ if __name__ == "__main__" :
 
     plots = []
     plot_opts = []
+    dv = []
+    dv_desc = []
     rw = ct.RowWriter([40])
 
     # Stage we will be flying
@@ -32,6 +34,8 @@ if __name__ == "__main__" :
 
     # Available stage DV
     dv_stage = s2.dv_at_m(s2.m0_kg, 0.0)
+    dv.append(dv_stage)
+    dv_desc.append("Initial")
     rw.write("Initial stage DV", dv_stage)
 
     # Kerbin
@@ -70,6 +74,8 @@ if __name__ == "__main__" :
 
     # Hohmann transfer out to Mun
     dv_o1_o2 = mpm.dv_r0_hohmann(GMkerbin, o1_r0, 0.85*mun_d)
+    dv.append(dv[-1] - dv_o1_o2)
+    dv_desc.append("After Hohmann to Mun")
     rw.write("DV to reach Mun", dv_o1_o2)
 
     # New stage mass.
@@ -139,6 +145,8 @@ if __name__ == "__main__" :
         if o3.phi_i < 0.0 :
             # Before r0
             dv_o3_o4 = o3.r0_dv_to_e(0.0)
+            dv.append(dv[-1]-abs(dv_o3_o4))
+            dv_desc.append("After Hohmann to circ around mun")
             rw.write("DV to circ orbit about mun is", dv_o3_o4)
 
             s2_v0_o4 = o3.v0 + dv_o3_o4
@@ -160,6 +168,9 @@ if __name__ == "__main__" :
             
         else :
             rw.write("DV to circ orbit about mun is", "NONE: PAST R0!")
+
+        dvdata = zip(dv_desc, dv)
+        rw.tabulate(["Desc","DV"], dvdata)
 
     # Plot everything
     fig, ax = plt.subplots()
