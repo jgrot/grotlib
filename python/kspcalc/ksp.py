@@ -23,10 +23,12 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
     sys.stderr.write("*** Wrong python version.  Make sure virtual environment is activated.\n")
     exit(1)
 
-#
-# KSP Calc Paths
-#
-    
+
+##
+## PROJECT PATHS
+##
+
+
 KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
 KSPDBDIR = os.path.join( KSPCALCDIR, "data/databases" )
 KSPEXAMPLESDIR = os.path.join( KSPCALCDIR, "data/examples" )
@@ -51,17 +53,21 @@ def pthut( filename ) :
     '''
     return os.path.join( KSPUTDIR, filename )
 
-#
-# Constants
-#
+
+##
+## PHYSICAL CONSTANTS
+##
+
 
 C_Rgas = 8.3145           # J/mol/K
 C_air_mol_mass = 28.84E-3 # kg/mol
 C_p0 = 100174.2           # Pa (ground pressure on Kerbin)
 
-#
-# Databases
-#
+
+##
+## DATABASES
+##
+
 
 # Solar System Data
 bodies_db = {
@@ -172,20 +178,9 @@ engine_db = {
     }
 }
 
-nosecone_db = {
-    
-}
-
-def augmentBodyDbs() :
-    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
-    
-    for body_key in bodies_db :
-        fname = pthdb( "%s.json" % body_key )
-        exists = os.access( fname, os.F_OK )
-        if exists :
-            with open( fname, 'rt' ) as f :
-                extra_dat = json.load(f)
-                bodies_db[body_key].update( extra_dat )
+def listOfBodyNames(sep = " | ") :
+    body_names = bodies_db.keys()
+    return sep.join(body_names)
 
 def processBodyDbs() :
     '''Pre-processes bodies_db data.
@@ -220,11 +215,331 @@ def processBodyDbs() :
                 except :
                     pass
 
-#
-# Drag Divergence
-#
+def uconv(db, ufrom, uto) :
+    '''Computes multiplication factor to convert value of units "ufrom" to value of units "uto"
+
+    :param string db: name of units db
+    :param string ufrom: units converting from
+    :param string uto: units converting to
+
+    :returns: float conversion factor
+    '''
+    return db[ufrom] / db[uto]
+
+
+##
+## PROCEDURES
+##
+
+
+def augmentBodyDbs() :
+    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
+    
+    for body_key in bodies_db :
+        fname = pthdb( "%s.json" % body_key )
+        exists = os.access( fname, os.F_OK )
+        if exists :
+            with open( fname, 'rt' ) as f :
+                extra_dat = json.load(f)
+                bodies_db[body_key].update( extra_dat )
+
+def dInterp(term, dunit="m") :
+    '''General distance interpreter.
+
+    Terms are separated by spaces and therefore must not contain
+    spaces.  Valid terms are:
+
+    1. Regular value, units list or tuple pair
+    2. String: D('body1','body2')
+    3. String: R('body')
+    4. String containing all valid terms above separated by operators
+
+    '''
+    if isinstance(term, str) :
+        terms = term.split()
+        # Currently only allowing an odd number of terms where even terms must be + or -
+        nterms = len(terms)
+        if nterms % 2 != 1 :
+            raise Exception("Bad number of terms")
+        # Convert odd terms (0,2,...) to meters
+        terms2 = []
+        for iterm, term in enumerate(terms) :
+            if iterm % 2 == 1 :
+                terms2.append(term)
+            else :
+                if term[0] == "D" :
+                    # This is a distance calculation
+                    d = dInterpDist(term, dunit)
+                    terms2.append(d)
+                elif term[0] == "R" :
+                    r = dInterpRadius(term, dunit)
+                    terms2.append(r)
+                elif term[0] in ("(","[") :
+                    # Expecting regular distance term
+                    d, du = eval(term)
+                    d *= uconv(dist_db, du, dunit)
+                    terms2.append(d)
+                    
+        # Compine the distance terms
+
+        dtot = 0.0
+        op = None
+        for i, x in enumerate(terms2) :
+            if i % 2 == 0 :
+                if op == '+' or op is None :
+                    dtot += x
+                elif op == '-' :
+                    dtot -= x
+            else :
+                op = x
+
+        return dtot
+        
+    elif isinstance(term, list) or isinstance(term, tuple) :
+        d, du = term
+        d *= uconv(dist_db, du, dunit)
+        return d
+
+def dInterpDist(term, dunit="m") :
+    '''Interprets a distance expression "D('body1', 'body2')"
+
+    :param string dunit: destination unit
+
+    :returns: float distance in units of dunit
+    '''
+    
+    if term[0] != "D" :
+        raise Exception("Not a distance term")
+
+    b1, b2 = eval(term[1:])
+
+    b1_rec = bodies_db[b1]
+    b2_rec = bodies_db[b2]
+
+    try :
+        if "satellites" in b1_rec :
+            d, du = b1_rec["satellites"][b2]
+        else :
+            d, du = b2_rec["satellites"][b1]
+    except KeyError :
+        raise Exception("Could not look up distance between %s and %s" % (b1, b2))
+
+    d *= uconv(dist_db, du, dunit)
+
+    return d
+
+def dInterpRadius(term, dunit="m") :
+    '''Interprets a body radius expression "R('body')"
+
+    :returns: float radius in units of dunit
+    '''
+
+    if term[0] != "R" :
+        raise Exception("Not a radius term")
+
+    body = eval(term[1:])
+
+    body_rec = bodies_db[body]
+
+    R, Ru = body_rec["R"]
+
+    R *= uconv(dist_db, Ru, dunit)
+
+    return R
+
+def dvHohmannApo(body, h_peri, h_apo) :
+    '''DV computed when firing a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
+
+    :param (d,"du") h_peri: periapsis *altitude* (not radius)
+    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
+
+    :returns: float Delta-V for maneuver
+    '''
+    
+    body_rec = bodies_db[body]
+    (GM, GMu) = body_rec["GM"]
+    
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
+    
+    hperi, hperiu = h_peri
+    hperi *= uconv(dist_db, hperiu, "m")
+    
+    hapo, hapou = h_apo
+    hapo *= uconv(dist_db, hapou, "m")
+
+    r0 = R+hperi
+    r1 = R+hapo
+
+    return mpm.dv_r1_hohmann(GM, r0, r1)
+    
+def dvHohmannPeri(body, h_peri, h_apo) :
+    '''DV computed when firing a) prograde at peri to attain elliptical orbit, or b) retrograde at peri to attain circular orbit.
+
+    :param (d,"du") h_peri: periapsis *altitude* (not radius)
+    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
+
+    :returns: float Delta-V for maneuver
+    '''
+    
+    body_rec = bodies_db[body]
+    (GM, GMu) = body_rec["GM"]
+
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
+    
+    hperi, hperiu = h_peri
+    hperi *= uconv(dist_db, hperiu, "m")
+    
+    hapo, hapou = h_apo
+    hapo *= uconv(dist_db, hapou, "m")
+
+    r0 = R+hperi
+    r1 = R+hapo
+
+    return mpm.dv_r0_hohmann(GM, r0, r1)
+
+def dvInterp(maneuvers) :
+    '''Interpret a set of maneuvers to compute DV map'''
+
+    dv_tot = 0.0
+
+    tabrows = []
+    
+    for m in maneuvers :
+        tabrow = []
+
+        try :
+            tabrow.append(m['desc'])
+        except :
+            tabrow.append("Maneuver")
+        
+        mtype = m["type"]
+
+        tabrow.append(mtype)
+        
+        if mtype == "launch" :
+            dv = dvOrbit(m["body"], m["orbit"])
+
+        elif mtype == "hperi" :
+            peri = m["peri"]
+            apo = m["apo"]
+            p = dInterp(peri, "m")
+            a = dInterp(apo, "m")
+            dv = dvHohmannPeri(m["body"], (p,"m"), (a,"m"))
+
+        elif mtype == "hapo" :
+            peri = m["peri"]
+            apo = m["apo"]
+            p = dInterp(peri, "m")
+            a = dInterp(apo, "m")
+            dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
+
+        elif mtype == "turn" :
+            speed = m["speed"]
+            ang = m["angle"]
+            dv = dvTurn(speed, ang)
+
+        dv_tot += dv
+
+        tabrow.append(dv)
+        tabrow.append(dv_tot)
+
+        tabrows.append(tabrow)
+        
+    print(tabulate.tabulate(tabrows, headers=["Description","Type","DV","DV Sum"]))
+    
+    return dv_tot
+
+def dvTurn(speed_xpr, theta) :
+    '''Computes DV needed for orbit inclination change
+
+    :param float_or_python_expr speed_xpr: orbital speed of craft
+    :param (ang,'u_ang') theta: turn angle
+    '''
+
+    if isinstance(speed_xpr, float) or isinstance(speed_xpr, int) :
+        speed = float(speed_xpr)
+    else :
+        speed = eval(speed_xpr)
+    
+    theta, u_theta = theta
+    theta *= uconv(angle_db, u_theta, "radians")
+
+    return speed * theta
+
+def g(body, alt) :
+    '''Computes acceleration due to gravity near body "body" at altitude "alt"
+
+    :param string body: name of body
+    :param (d,"du"() alt: altitude
+
+    :returns: acceleration of gravity (m/s^2)
+    '''
+
+    try :
+        alt, altu = alt
+    except :
+        sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
+        exit(1)
+
+    alt *= uconv(dist_db, altu,"m")
+
+    body_rec = bodies_db[body]
+    (GM, GMu) = body_rec["GM"]
+
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
+    
+    r = R + alt
+
+    g = GM / (r*r)
+
+    return g
+
+def orbitV(body, alt) :
+    '''Computes speed of circular orbit.
+
+    :param string body: name of body about which to orbit
+    :param (d,"du") alt: altitude
+
+    :returns: float orbit speed (m/s)
+    '''
+    
+    try :
+        alt, altu = alt
+    except :
+        sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
+        exit(1)
+
+    alt *= uconv(dist_db, altu, "m")
+    
+    body_rec = bodies_db[body]
+
+    (GM, GMu) = body_rec["GM"]
+
+    (R, Ru) = body_rec["R"]
+    R *= uconv(dist_db, Ru, "m")
+    
+    r = R + alt
+
+    return math.sqrt(GM/r)
+
+##
+## CLASSES AND MODULE OBJECTS
+##
 
 class DragDivergence(mm.Functor) :
+    '''Drag divergence is a phenomenon where the drag coefficient
+    increases as vehicle speed approaches Mach 1.
+
+    This model is in early stages of dev and testing, but a
+    parameterized tanh form seems to best approximate the effect.
+
+    :See also: optim_dd.py
+
+    :Todo: cite references on tanh form.
+    '''
 
     def __init__(self, c0=3.0, c1=10.0, c2=0.71) :
         rangemin = [0.0]
@@ -242,6 +557,8 @@ class DragDivergence(mm.Functor) :
 
         M = X[0]
 
+        # optim_dd.py experiments to determine parameters:
+        #
         # 3.20540819 10.11003808  0.64473092 chj3
         # 3.01128474  9.92764216  0.73508828 ancA
         # 2.85659979  9.48884985  0.77361743 anc
@@ -255,15 +572,10 @@ class DragDivergence(mm.Functor) :
     
 dd = DragDivergence()
 
-#
-# Trajectories and Orbits
-#
-
-
 class Stage :
     '''Model of an isolated stage.
 
-    :param float m0: mass of ready stage.  If None, assumes init via loadJSON().
+    :param tuple m0: (<mass value>,'<mass unit>') mass of stage with engines completely full.  If None, assumes init via loadJSON().
     :param list engines: [ (N1, "Name of engine 1"), etc. ]
     :param float dragco: currently lumped term of 1/2*Cd*A
     '''
@@ -362,10 +674,10 @@ class Stage :
         #       | .
         #       |  . dM/dt = rate_i : all engines running
         #       |   .
-        # Mfuel |    o Mi
+        # Mfuel |    o M_i
         #       |    |   . dM/dt = rate0 : longest burning engines running
         #       |    |       .
-        #       +----|-----------o M0-------------> time
+        #       +----|-----------o M_0-------------> time
         #       |DTi |    DT0    |
         #
         #  Build a rate vs mass function using the notions in the plot above.
@@ -863,9 +1175,16 @@ class FlyingStage :
             t += dt
             
         return(x,y)
-#
-# Prototype Code
-#
+
+######################################################
+##                                                  ##
+##                                                  ##
+##           EARLY EXPERIMENTAL CODE                ##
+##                                                  ##
+##        stuff written before Stage, FlyingStage   ##
+##        Orbit, OrientedOrbit, etc.                ##
+##                                                  ##
+######################################################
 
 template_craft = [
     ( "rocket", {
@@ -923,6 +1242,7 @@ template_maneuvers = [
 	"apo"  : "D('Kerbin','Mun') + R('Mun') + (100,'km')"
     },
 ]
+
 
 def analyzeRocket(rocket_def) :
     '''Analyze a rocket DV specified in a JSON file.
@@ -994,214 +1314,6 @@ def analyzeRocket(rocket_def) :
 
         print("DV Total:", dvtot)
             
-def dInterp(term, dunit="m") :
-    '''General distance interpreter.
-
-    Terms are separated by spaces and therefore must not contain
-    spaces.  Valid terms are:
-
-    1. Regular value, units list or tuple pair
-    2. String: D('body1','body2')
-    3. String: R('body')
-    4. String containing all valid terms above separated by operators
-
-    '''
-    if isinstance(term, str) :
-        terms = term.split()
-        # Currently only allowing an odd number of terms where even terms must be + or -
-        nterms = len(terms)
-        if nterms % 2 != 1 :
-            raise Exception("Bad number of terms")
-        # Convert odd terms (0,2,...) to meters
-        terms2 = []
-        for iterm, term in enumerate(terms) :
-            if iterm % 2 == 1 :
-                terms2.append(term)
-            else :
-                if term[0] == "D" :
-                    # This is a distance calculation
-                    d = dInterpDist(term, dunit)
-                    terms2.append(d)
-                elif term[0] == "R" :
-                    r = dInterpRadius(term, dunit)
-                    terms2.append(r)
-                elif term[0] in ("(","[") :
-                    # Expecting regular distance term
-                    d, du = eval(term)
-                    d *= uconv(dist_db, du, dunit)
-                    terms2.append(d)
-                    
-        # Compine the distance terms
-
-        dtot = 0.0
-        op = None
-        for i, x in enumerate(terms2) :
-            if i % 2 == 0 :
-                if op == '+' or op is None :
-                    dtot += x
-                elif op == '-' :
-                    dtot -= x
-            else :
-                op = x
-
-        return dtot
-        
-    elif isinstance(term, list) or isinstance(term, tuple) :
-        d, du = term
-        d *= uconv(dist_db, du, dunit)
-        return d
-
-def dInterpDist(term, dunit="m") :
-    '''Interprets a distance expression "D('body1', 'body2')"
-
-    :param string dunit: destination unit
-
-    :returns: float distance in units of dunit
-    '''
-    
-    if term[0] != "D" :
-        raise Exception("Not a distance term")
-
-    b1, b2 = eval(term[1:])
-
-    b1_rec = bodies_db[b1]
-    b2_rec = bodies_db[b2]
-
-    try :
-        if "satellites" in b1_rec :
-            d, du = b1_rec["satellites"][b2]
-        else :
-            d, du = b2_rec["satellites"][b1]
-    except KeyError :
-        raise Exception("Could not look up distance between %s and %s" % (b1, b2))
-
-    d *= uconv(dist_db, du, dunit)
-
-    return d
-
-def dInterpRadius(term, dunit="m") :
-    '''Interprets a body radius expression "R('body')"
-
-    :returns: float radius in units of dunit
-    '''
-
-    if term[0] != "R" :
-        raise Exception("Not a radius term")
-
-    body = eval(term[1:])
-
-    body_rec = bodies_db[body]
-
-    R, Ru = body_rec["R"]
-
-    R *= uconv(dist_db, Ru, dunit)
-
-    return R
-
-def dvHohmannApo(body, h_peri, h_apo) :
-    '''DV computed when firing a) prograde at apo to attain circular orbit, or b) retrograde from apo to attain elliptical orbit.
-
-    :param (d,"du") h_peri: periapsis *altitude* (not radius)
-    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
-
-    :returns: float Delta-V for maneuver
-    '''
-    
-    body_rec = bodies_db[body]
-    (GM, GMu) = body_rec["GM"]
-    
-    (R, Ru) = body_rec["R"]
-    R *= uconv(dist_db, Ru, "m")
-    
-    hperi, hperiu = h_peri
-    hperi *= uconv(dist_db, hperiu, "m")
-    
-    hapo, hapou = h_apo
-    hapo *= uconv(dist_db, hapou, "m")
-
-    r0 = R+hperi
-    r1 = R+hapo
-
-    return mpm.dv_r1_hohmann(GM, r0, r1)
-    
-def dvHohmannPeri(body, h_peri, h_apo) :
-    '''DV computed when firing a) prograde at peri to attain elliptical orbit, or b) retrograde at peri to attain circular orbit.
-
-    :param (d,"du") h_peri: periapsis *altitude* (not radius)
-    :param (d,"du") h_apo:  apoapsis  *altitude* (not radius)
-
-    :returns: float Delta-V for maneuver
-    '''
-    
-    body_rec = bodies_db[body]
-    (GM, GMu) = body_rec["GM"]
-
-    (R, Ru) = body_rec["R"]
-    R *= uconv(dist_db, Ru, "m")
-    
-    hperi, hperiu = h_peri
-    hperi *= uconv(dist_db, hperiu, "m")
-    
-    hapo, hapou = h_apo
-    hapo *= uconv(dist_db, hapou, "m")
-
-    r0 = R+hperi
-    r1 = R+hapo
-
-    return mpm.dv_r0_hohmann(GM, r0, r1)
-
-def dvInterp(maneuvers) :
-    '''Interpret a set of maneuvers to compute DV map'''
-
-    dv_tot = 0.0
-
-    tabrows = []
-    
-    for m in maneuvers :
-        tabrow = []
-
-        try :
-            tabrow.append(m['desc'])
-        except :
-            tabrow.append("Maneuver")
-        
-        mtype = m["type"]
-
-        tabrow.append(mtype)
-        
-        if mtype == "launch" :
-            dv = dvOrbit(m["body"], m["orbit"])
-
-        elif mtype == "hperi" :
-            peri = m["peri"]
-            apo = m["apo"]
-            p = dInterp(peri, "m")
-            a = dInterp(apo, "m")
-            dv = dvHohmannPeri(m["body"], (p,"m"), (a,"m"))
-
-        elif mtype == "hapo" :
-            peri = m["peri"]
-            apo = m["apo"]
-            p = dInterp(peri, "m")
-            a = dInterp(apo, "m")
-            dv = dvHohmannApo(m["body"], (p,"m"), (a,"m"))
-
-        elif mtype == "turn" :
-            speed = m["speed"]
-            ang = m["angle"]
-            dv = dvTurn(speed, ang)
-
-        dv_tot += dv
-
-        tabrow.append(dv)
-        tabrow.append(dv_tot)
-
-        tabrows.append(tabrow)
-        
-    print(tabulate.tabulate(tabrows, headers=["Description","Type","DV","DV Sum"]))
-    
-    return dv_tot
-
 def dvOrbit(body, alt) :
     '''(Experimental) Compute DV to reach circular orbit about a body from launch.
     '''
@@ -1225,56 +1337,6 @@ def dvOrbit(body, alt) :
     dvOrbit = math.sqrt((GM/R) - (GM/r))
 
     return dvOrbit
-
-def dvTurn(speed_xpr, theta) :
-    '''Computes DV needed for orbit inclination change
-
-    :param float_or_python_expr speed_xpr: orbital speed of craft
-    :param (ang,'u_ang') theta: turn angle
-    '''
-
-    if isinstance(speed_xpr, float) or isinstance(speed_xpr, int) :
-        speed = float(speed_xpr)
-    else :
-        speed = eval(speed_xpr)
-    
-    theta, u_theta = theta
-    theta *= uconv(angle_db, u_theta, "radians")
-
-    return speed * theta
-
-def g(body, alt) :
-    '''Computes acceleration due to gravity near body "body" at altitude "alt"
-
-    :param string body: name of body
-    :param (d,"du"() alt: altitude
-
-    :returns: acceleration of gravity (m/s^2)
-    '''
-
-    try :
-        alt, altu = alt
-    except :
-        sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
-        exit(1)
-
-    alt *= uconv(dist_db, altu,"m")
-
-    body_rec = bodies_db[body]
-    (GM, GMu) = body_rec["GM"]
-
-    (R, Ru) = body_rec["R"]
-    R *= uconv(dist_db, Ru, "m")
-    
-    r = R + alt
-
-    g = GM / (r*r)
-
-    return g
-
-def listOfBodyNames(sep = " | ") :
-    body_names = bodies_db.keys()
-    return sep.join(body_names)
 
 def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
     '''(Experimental) Compute fuel or thrust needed for a first stage to reach a certain
@@ -1343,45 +1405,6 @@ def jump(alt, body, Isp, Me, x, solve_for="thrust", vf=0.0, Edrag=0.0, ) :
         
     else :
         raise Exception("Bad value for solve_for")
-
-def orbitV(body, alt) :
-    '''Computes speed of circular orbit.
-
-    :param string body: name of body about which to orbit
-    :param (d,"du") alt: altitude
-
-    :returns: float orbit speed (m/s)
-    '''
-    
-    try :
-        alt, altu = alt
-    except :
-        sys.stderr.write("*** Bad form for altitude.  Required: (value, \"unit\")\n")
-        exit(1)
-
-    alt *= uconv(dist_db, altu, "m")
-    
-    body_rec = bodies_db[body]
-
-    (GM, GMu) = body_rec["GM"]
-
-    (R, Ru) = body_rec["R"]
-    R *= uconv(dist_db, Ru, "m")
-    
-    r = R + alt
-
-    return math.sqrt(GM/r)
-
-def uconv(db, ufrom, uto) :
-    '''Computes multiplication factor to convert value of units "ufrom" to value of units "uto"
-
-    :param string db: name of units db
-    :param string ufrom: units converting from
-    :param string uto: units converting to
-
-    :returns: float conversion factor
-    '''
-    return db[ufrom] / db[uto]
 
 def main() :
     '''Command Line Interface
@@ -1601,87 +1624,7 @@ def main() :
 
     if args.command == "experiment" :
 
-        if False:
-            o2 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
-            o2.plot(use_t = True, Rbody=600000)
-            o2.plot(use_t = False, Rbody=600000)
-            
-            o = Orbit( [ 2000, 670000, 0, 0.0, 0.004 ], bodies_db["Kerbin"]["GM"][0] )
-            o.plot(use_t = True, Rbody=6E5)
-            o.plot(use_t = False, Rbody=6E5)
-            
-            o3 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="parabola" )
-            o3.plot(use_t = True, Rbody=600000)
-            o3.plot(use_t = False, Rbody=600000)
-            
-            o4 = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
-            o4.plot(use_t = True, Rbody=600000)
-            o4.plot(use_t = False, Rbody=600000)
-
-        if False:
-            o = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0], force="circle" )
-            print(o.r0, o.e)
-            e = 0.2
-            r1 = o.r0*(1.0+e)/(1.0-e)
-            print(r1, e)
-            print(dvHohmannPeri("Kerbin", (o.r0-600000,"m"), (r1-600000,"m")))
-            print(o.r0_dv_to_e(e))
-
-            o = Orbit( [ 2000, 670000, 0, 100.0, 0.01 ], bodies_db["Kerbin"]["GM"][0] )
-            print(o.r0, o.e)
-            e = 0.2
-            r1 = o.r0*(1.0+e)/(1.0-e)
-            print(r1, e)
-            print(dvHohmannPeri("Kerbin", (o.r0-600000,"m"), (r1-600000,"m")))
-            print(o.r0_dv_to_e(e))
-
-        if True :
-            import matplotlib
-            import matplotlib.pyplot as plt
-
-            fig, ax = plt.subplots()
-        
-
-            o = mpm.Orbit([ 2000, 670000, 0, 0.0, 0.005 ], bodies_db["Kerbin"]["GM"][0] )
-            phi_soi = 0.6*math.pi
-            d_soi = 5.0*o.r0
-            r_soi = 2.0*o.r0
-            x0_soi = d_soi*math.cos(phi_soi)
-            y0_soi = d_soi*math.sin(phi_soi)
-
-            plots = [o.sample(use_t=False)]
-            plot_opts = [{"marker":"o"}]
-
-            # Sample SOI circle
-            plots.append(mpt.offset_xy(mpt.sample_circle(r_soi, 100), x0_soi, y0_soi))
-            plot_opts.append(None)
-
-            # Sample Kerbin circle
-            plots.append(mpt.sample_circle(6E5, 100))
-            plot_opts.append(None)
-            
-            phi_x = o.intersect_soi(phi_soi, d_soi, r_soi)
-
-            print("DEBUG PHIX", phi_x)
-
-            for phi in phi_x :
-                if phi is None:
-                    break
-            
-                r_x = o.y_phi(phi)[1]
-
-                x=r_x*math.cos(phi)
-                y=r_x*math.sin(phi)
-
-                plots.append([[x],[y]])
-                plot_opts.append({"marker":"o"})
-
-            bbox = mpt.square_plot_bounds(plots)
-            
-            mpt.square_plots(ax, plots, bbox, plot_opts)
-
-            plt.show()
-
+        print("No new experiments at this time.  See examples directory.")
             
 
 if __name__ == "__main__" :

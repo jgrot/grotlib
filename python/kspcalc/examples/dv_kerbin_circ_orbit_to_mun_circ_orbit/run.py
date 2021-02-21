@@ -2,7 +2,7 @@
 
 # Copyright © 2021 Jonathan Grot
 
-'''DV to go from kerbin circ orbit to mun landing
+'''DV to go from kerbin circ orbit to mun circ orbit
 '''
 
 import math
@@ -19,11 +19,12 @@ if __name__ == "__main__" :
     ksp.augmentBodyDbs()
     ksp.processBodyDbs()
 
+    rw = ct.RowWriter([40])
+    
     plots = []
     plot_opts = []
     dv = []
     dv_desc = []
-    rw = ct.RowWriter([40])
 
     # Stage we will be flying
     s2 = ksp.Stage()

@@ -236,7 +236,7 @@ def TORBIT() :
     # E must be identically 0.0
     if not cmp.fsame(o.E, 0.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(o.v0, 3246.1228308300074, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(o.phi0, 0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.phi_i, 0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     t1 = 10.0
     t2 = 100.0
@@ -257,7 +257,7 @@ def TORBIT() :
     if not cmp.fsame(o.h, 4489000000.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(o.E, 34362686567.16418, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(o.v0, 6700.845443458724, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(o.phi0, 0.016908466324052317, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(o.phi_i, 0.016908466324052317, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     t1 = 10.0
     t2 = 100.0
@@ -371,22 +371,22 @@ if __name__ == "__main__" :
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dInterpDist Mun and Kerbin")
-    truth = 11400000.0
+    truth = 12000000.0
     test = ksp.dInterpDist("D('Mun','Kerbin')")
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dInterpDist Kerbin and Mun (flip order)")
-    truth = 11400000.0
+    truth = 12000000.0
     test = ksp.dInterpDist("D('Mun','Kerbin')")
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dInterpDist Minmus and Kerbin")
-    truth = 46400000.0
+    truth = 47000000.0
     test = ksp.dInterpDist("D('Minmus','Kerbin')")
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dInterpDist Kerbin and Minmus (flip order)")
-    truth = 46400000.0
+    truth = 47000000.0
     test = ksp.dInterpDist("D('Minmus','Kerbin')")
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
@@ -429,14 +429,14 @@ if __name__ == "__main__" :
 
     s = "D('Kerbin','Minmus') + (100,'km') + R('Minmus') - (50000,'m')"
     print("Testing dInterp on \"%s\"" % s)
-    truth = 46510000.0
+    truth = 47110000.0
     test = ksp.dInterp(s)
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
 
     print("Testing dvInterp with dvmap_kerbin_to_mun.json")
     with open(ksp.pthex("dvmap_kerbin_to_mun.json"), "rt") as f :
         maneuvers = json.load(f)
-    truth = 3671.3933492693336
+    truth = 3674.084081820914
     test = ksp.dvInterp( maneuvers )
     if not cmp.fsame(test, truth, report_to = sys.stderr) : exit(1)
     
