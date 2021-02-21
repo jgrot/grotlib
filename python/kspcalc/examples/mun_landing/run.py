@@ -31,13 +31,38 @@ if __name__ == "__main__" :
 
     rw.print("Analysis...")
 
+    # Mun
+    mun_r_m = ksp.dInterp("R('Mun')")
+    # Plot Mun
+    mun_XY = mpt.sample_circle(mun_r_m, 100)
+    plots.append(mun_XY)
+    plot_opts.append(None)
+    
     # A FlyingStage is used when there are non-central forces acting on the stage.
+    def fthrottle(t, y) :
+        return 0.1
     
+    def falpha(t, y, fs) :
+        return 0.0
     
+    fs2 = ksp.FlyingStage(s2, "fs2", "Mun", fthrottle, falpha)
+    fs2_h0 = 8000.0 # meters
+    fs2_r0 = mun_r_m + fs2_h0
+    fs2_v0 = ksp.orbitV("Mun", (fs2_h0, "m"))
+    y_init = [s2.m0_kg, fs2_r0, 0.0, 0.0, fs2_v0/fs2_r0]
+    fs2.launch(y_init)
+
+    # Plot trajectory
+    fs2_XY = fs2.sample(0.0, 5*60.0, 5.0)
+    plots.append(fs2_XY)
+    plot_opts.append({"marker":"o"})
+    # Bbox surrounds fs2 traj
+    bbox = mpt.square_plot_bounds([fs2_XY])
 
     # Plot everything
-    fig, ax = plt.subplots()
-    bbox = mpt.square_plot_bounds(plots)
-    mpt.square_plots(ax, plots, bbox, plot_opts)
+    if len(plots) > 0 :
+        fig, ax = plt.subplots()
+        # bbox = mpt.square_plot_bounds(plots)
+        mpt.square_plots(ax, plots, bbox, plot_opts)
     
-    plt.show()
+        plt.show()

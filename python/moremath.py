@@ -311,34 +311,50 @@ class Functor :
             extent = [ self.rangemin[ii1], self.rangemax[ii1], self.rangemin[ii2], self.rangemax[ii2] ]
             mpl_axes.imshow( y.transpose(), origin='lower', extent=extent )
 
-class Interp1DFunctor( Functor ) :
+class Interp1DFunctor(Functor) :
     '''A Functor based on scipy.interpolate.interp1d
 
     :param list xs: in values
     :param list ys: out values
     :param string kind: ‘linear’|‘nearest’|‘nearest-up’|‘zero’|‘slinear’|‘quadratic’|‘cubic’|‘previous’|‘next’
     '''
-    def __init__( self, xs, ys, kind="linear", low_fill=0.0, high_fill=0.0 ) :
+    def __init__(self, xs, ys, kind="linear", low_fill=0.0, high_fill=0.0) :
         rangemin = [xs[0]]
         rangemax = [xs[-1]]
         self.low_fill = low_fill
         self.high_fill = high_fill
 
         # Fill value is ignored by this class.
-        self.f = interp1d( xs, ys, kind=kind, bounds_error=False, fill_value=0.0 )
-        super().__init__( rangemin, rangemax )
+        self.f = interp1d(xs, ys, kind=kind, bounds_error=False, fill_value=0.0)
+        super().__init__(rangemin, rangemax)
 
-    def call( self, *X ) :
+    def call(self, *X) :
         if X[0] < self.rangemin[0] :
-            return [ self.low_fill ]
+            return [self.low_fill]
         elif X[0] > self.rangemax[0] :
-            return [ self.high_fill ]
+            return [self.high_fill]
         else :
-            return [ self.f(X[0]) ]
+            return [self.f(X[0])]
 
-    def nDep( self ) :
+    def nDep(self) :
         return 1
 
+class Const1DFunctor(Functor) :
+    '''A 1D functor (one dep variable) that always returns a constant value
+
+    Useful as a stub or default functor.
+    '''
+    def __init__(self, const_val=0.0) :
+        self.const_val = const_val
+        rangemin = [-math.inf]
+        rangemax = [math.inf]
+        super().__init__(rangemin, rangemax)
+
+    def call(self, *X) :
+        return [self.const_val]
+
+    def nDep(self) :
+        return 1
 
 #
 # Unit test (and examples)

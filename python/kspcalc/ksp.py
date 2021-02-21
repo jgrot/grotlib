@@ -62,7 +62,9 @@ def pthut( filename ) :
 C_Rgas = 8.3145           # J/mol/K
 C_air_mol_mass = 28.84E-3 # kg/mol
 C_p0 = 100174.2           # Pa (ground pressure on Kerbin)
-
+kerbin_day_s = 21549.0
+mun_rot_period_s = 6.0*kerbin_day_s + 2.0*3600.0 + 36*60.0
+minmus_rot_period_s = 1.0*kerbin_day_s + 5.0*3600.0 + 13*60.0
 
 ##
 ## DATABASES
@@ -78,17 +80,21 @@ bodies_db = {
             "Mun"    : (11.4+.6, "Mm"),
             "Minmus" : (46.4+.6, "Mm")
         },
-        "tday" : (6.0, "h"),
+        "trot" : (kerbin_day_s, "s"), # Rotational period
     },
     "Mun" : {
         "GM" : (6.514E10, "m3/s2"),
         "R"  : (200E3, "m"),
         "VORB"  : (542.5, "m/s"),
-        "SOI" : (2430, "km")
+        "SOI" : (2430.0, "km"),
+        "trot" : (mun_rot_period_s, "s")
     },
     "Minmus" : {
         "GM" : (1.766E9, "m3/s2"),
         "R"  : (60, "km"),
+        "VORB" : (274.1, "m/s"),
+        "SOI" : (2247.0, "km"),
+        "trot" : (minmus_rot_period_s, "s")
     }
 }
 
@@ -178,6 +184,17 @@ engine_db = {
     }
 }
 
+def augmentBodyDbs() :
+    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
+    
+    for body_key in bodies_db :
+        fname = pthdb( "%s.json" % body_key )
+        exists = os.access( fname, os.F_OK )
+        if exists :
+            with open( fname, 'rt' ) as f :
+                extra_dat = json.load(f)
+                bodies_db[body_key].update( extra_dat )
+
 def listOfBodyNames(sep = " | ") :
     body_names = bodies_db.keys()
     return sep.join(body_names)
@@ -188,15 +205,21 @@ def processBodyDbs() :
     
     for body_key in bodies_db :
         bodyrec = bodies_db[body_key]
+        
         if "apt" in bodyrec :
+            # apt - Atmospleric pressure and temperature
             alts, ps, ts = zip( *bodyrec["apt"] )
 
             dens = [ C_air_mol_mass*p/ts[i]/C_Rgas for i,p in enumerate(ps) ]
             snd  = [ math.sqrt(142E3 / di) for di in dens ]
 
-            bodyrec["fdens"] = mm.Interp1DFunctor( alts, dens, kind="quadratic" )
-            bodyrec["fpress"] = mm.Interp1DFunctor( alts, ps, kind="quadratic" )
-            bodyrec["fsnd"] = mm.Interp1DFunctor( alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40 )
+            bodyrec["fdens"] = mm.Interp1DFunctor(alts, dens, kind="quadratic")
+            bodyrec["fpress"] = mm.Interp1DFunctor(alts, ps, kind="quadratic")
+            bodyrec["fsnd"] = mm.Interp1DFunctor(alts, snd, kind="quadratic", low_fill = snd[0], high_fill=1E40)
+        else :
+            bodyrec["fdens"] = mm.Const1DFunctor(0.0)
+            bodyrec["fpress"] = mm.Const1DFunctor(0.0)
+            bodyrec["fsnd"] = mm.Const1DFunctor(math.inf)
 
         if "satellites" in bodyrec :
 
@@ -231,17 +254,6 @@ def uconv(db, ufrom, uto) :
 ## PROCEDURES
 ##
 
-
-def augmentBodyDbs() :
-    '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
-    
-    for body_key in bodies_db :
-        fname = pthdb( "%s.json" % body_key )
-        exists = os.access( fname, os.F_OK )
-        if exists :
-            with open( fname, 'rt' ) as f :
-                extra_dat = json.load(f)
-                bodies_db[body_key].update( extra_dat )
 
 def dInterp(term, dunit="m") :
     '''General distance interpreter.
@@ -919,7 +931,7 @@ class FlyingStage :
         self.fsnd   = self.body["fsnd"]
  
         # Body rotational period
-        tday, tday_u = self.body["tday"]
+        tday, tday_u = self.body["trot"]
         tday_s = tday * uconv( time_db, tday_u, "s" )
         self.body_omega = 2.0*math.pi / tday_s
         
@@ -1144,16 +1156,18 @@ class FlyingStage :
         self.soln = [ y0 ]
         self.maxr = 0.0
         
-    def sample( self, t0 = None, t1 = None, dt = 5.0 ) :
+    def sample(self, t0 = None, t1 = None, dt = 5.0) :
         '''Samples a trajectory for plotting.
 
-        :param float t0: time to start trajectory dump.  If None, will
+        :param float t0: time in seconds to start trajectory dump.  If None, will
                          start with the stage for which it is called.
-        :param float t1: time to end trajectory dump.  If None, will
+        :param float t1: time in seconds to end trajectory dump.  If None, will
                          end with the last time stamp of the current
                          stage.
         :param float dt: time interval between dumped trajectory
                          points.  Default is 5.0 seconds.
+
+        :returns: tuple ([<x values>], [<y values>])
         '''
 
         if t0 is None :
