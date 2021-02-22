@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright © 2021 Jonathan Grot
 
 import sys
 
