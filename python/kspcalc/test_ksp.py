@@ -2,7 +2,8 @@
 #
 # Copyright © 2021 Jonathan Grot
 #
-# This file is part of grotlib.
+# This file is part of grotlib. The latest version of grotlib is
+# available at https://github.com/jgrot/grotlib
 #
 # Grotlib is free software: you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by
