@@ -7,10 +7,10 @@ Python Libraries by Jonathan Grot
 =================================
 
 .. image:: mun_landing.png
-   :width: 400
+   :height: 400
 
 .. image:: transfers.png
-   :width: 400
+   :height: 400
 
 	   
 .. toctree::
