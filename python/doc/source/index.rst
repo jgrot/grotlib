@@ -6,6 +6,13 @@
 Python Libraries by Jonathan Grot
 =================================
 
+.. image:: mun_landing.png
+   :width: 400
+
+.. image:: transfers.png
+   :width: 400
+
+	   
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
