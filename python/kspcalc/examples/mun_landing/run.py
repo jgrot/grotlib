@@ -50,7 +50,7 @@ if __name__ == "__main__" :
     # Mun
     mun_r_m = ksp.dInterp("R('Mun')")
     # Plot Mun
-    mun_XY = mpt.sample_circle(mun_r_m, 100)
+    mun_XY = mpt.sample_circle(mun_r_m, 10000)
     plots.append(mun_XY)
     plot_opts.append(None)
     
