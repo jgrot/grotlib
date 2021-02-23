@@ -1487,11 +1487,6 @@ def main() :
     cmd_orbitV.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
     cmd_orbitV.add_argument("alt", help="\"(alt, 'unit')\"")
 
-    # Command "fly"
-    cmd_fly = subparsers.add_parser("fly", help="Fly a craft")
-    cmd_fly.add_argument("body", help="Name of body. Available: [%s]" % listOfBodyNames())
-    cmd_fly.add_argument("craft", help="Name of craft")
-
     # Command "plotfuncs"
     cmd_plotfuncs = subparsers.add_parser("plotfuncs", help="Plot up the model functions")
 
@@ -1537,20 +1532,6 @@ def main() :
 
         print("DV to reach circular orbit: %s" % dvOrbit(args.body, altitude))
 
-    if args.command == "fly" :
-        stage = Stage()
-        stage.loadJSON( args.craft )
-        
-        def fthrottle( t, y ) :
-            return 1.0
-        def fthrustdir( t, y, flyer ) :
-            return 0.5 * math.pi
-
-        flyer = FlyingStage( stage, "Stage 1", args.body, fthrottle, fthrustdir )
-        flyer.launch( )
-
-        flyer.dumpTraj(t1 = 30000, dt = 1.0)
-        
     if args.command == "g" :
         print("Body: %s" % args.body)
         altitude = eval(args.alt)

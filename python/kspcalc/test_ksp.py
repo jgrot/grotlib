@@ -183,7 +183,7 @@ def T2DS2ME() :
         
         plt.show()
 
-        flyer.dumpTraj( )    
+        flyer.dumpTraj()
 
 
 def TORBIT() :

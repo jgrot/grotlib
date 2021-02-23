@@ -40,9 +40,6 @@ The current list of commands is:
 **dvOrbit**
   Compute DV to get into a circular orbit at an altitude.
 
-**fly**
-  Load a stage file, fly it straight up using the polar motion solver, and see what happens.
-  
 **g**
   Compute gravitational acceleration of a body at an altitude.
 

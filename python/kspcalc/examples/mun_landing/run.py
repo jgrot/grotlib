@@ -60,30 +60,41 @@ if __name__ == "__main__" :
 
         v, n = mpm.v_and_dir(y)
 
-        if v > 10.0 :
-            return min(1.0, 0.0003*(v-10.0))
+        h = r - 200E3
+
+        vtarget = h/10.0
+
+        if t < 5.0 :
+            # Initial kick out of circ orbit
+            return 0.1
         else :
-            return 0.0
+            return min(1.0, 0.01*(max(v-vtarget,0.0)))
     
-    def falpha(t, y, fs) :
+    def fthustdir(t, y, fs) :
         v, n = mpm.v_and_dir(y)
         retro = (-n[0], -n[1])
         return retro
     
-    fs2 = ksp.FlyingStage(s2, "fs2", "Mun", fthrottle, falpha)
-    fs2_h0 = 8000.0 # meters
+    fs2 = ksp.FlyingStage(s2, "fs2", "Mun", fthrottle, fthustdir)
+    fs2_h0 = 30000.0 # meters
     fs2_r0 = mun_r_m + fs2_h0
     fs2_v0 = ksp.orbitV("Mun", (fs2_h0, "m"))
     y_init = [s2.m0_kg, fs2_r0, 0.0, 0.0, fs2_v0/fs2_r0]
     fs2.launch(y_init)
 
+    tend = 100*60.0
+    dt = 5.0
+    
     # Plot trajectory
-    fs2_XY = fs2.sample(0.0, 100*60.0, 5.0)
+    fs2_XY = fs2.sample(0.0, tend, dt)
     plots.append(fs2_XY)
     plot_opts.append({"marker":"o"})
     # Bbox surrounds fs2 traj
     bbox = mpt.square_plot_bounds([fs2_XY])
 
+    # Dump trajectory
+    fs2.dumpTraj(0.0, tend, dt)
+    
     # Plot everything
     if len(plots) > 0 :
         fig, ax = plt.subplots()
