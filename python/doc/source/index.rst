@@ -6,7 +6,7 @@
 Python Libraries by Jonathan Grot
 =================================
 
-.. image:: mun_landing.png
+.. image:: mun_landing_comp.png
    :height: 400
 
 .. image:: transfers.png
