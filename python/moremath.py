@@ -57,8 +57,11 @@ def bisect_interp(t, tseries, yseries) :
 
     :Rationale: bisect is used in case a non-uniform parameter series is used.
     '''
-
     y_is_scalars = (not type_tools.isIterableNonString(yseries[0]))
+
+    if t < tseries[0] or t > tseries[-1]:
+        msg = "Input parameter %s out of range: (%s, %s)" % (t, tseries[0], tseries[-1])
+        raise Exception(msg)
     
     i = (bisect.bisect( tseries, t ) - 1)
     if i == len(tseries)-1 :

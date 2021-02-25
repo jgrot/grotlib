@@ -49,7 +49,7 @@ if __name__ == "__main__" :
 
     rw.print("Analysis...")
 
-    # Available stage DV
+    # Available stage DV at start
     dv_stage = s2.dv_at_m(s2.m0_kg, 0.0)
     dv.append(dv_stage)
     dv_desc.append("Initial")
@@ -103,19 +103,27 @@ if __name__ == "__main__" :
     o2_th0 = 10.0*math.pi/180.0 # Inserting orbiter at r0
     o2_y = [s2_m_o2, o1_r0, o2_th0, 0.0, (o1_v0 + dv_o1_o2)/o1_r0]
     o2 = mpm.OrientedOrbit(o2_y, GMkerbin)
-    o2_TH=[i*math.pi*2/100 for i in range(101)]
-    o2_R=o2.sample_th(o2_TH)
-    # Plot stage orbit
-    plots.append(mpt.polar_to_xy(o2_R, o2_TH))
-    plot_opts.append(None)
 
     # Intersect elliptical orbit with Mun SOI
     TH_o2_x_mun_soi = o2.intersect_soi(mun_th, mun_d, mun_soi_r)
     if len(TH_o2_x_mun_soi) > 0 :
-        Y_o2_x_mun_soi = o2.y_th(TH_o2_x_mun_soi[0])
+        Y_o2_x_mun_soi = o2.y_at_th(TH_o2_x_mun_soi[0])
         m_o2_x_mun_soi, r_o2_x_mun_soi, th_o2_x_mun_soi, vr_o2_x_mun_soi, om_o2_x_mun_soi = Y_o2_x_mun_soi
         vth_o2_x_mun_soi = r_o2_x_mun_soi*om_o2_x_mun_soi
-        # Intersection point
+
+        # Plot course to intersection with SOI
+        o2_t_insert = o2.t_at_th(o2_th0)
+        o2_t_intersect = o2.t_at_th(th_o2_x_mun_soi)
+        rw.write("O2 t insert", o2_t_insert)
+        rw.write("O2 t intersect", o2_t_intersect)
+        dt = (o2_t_intersect - o2_t_insert)/50.0
+        T = [o2_t_insert + i*dt for i in range(51)]
+        o2_R, o2_TH = o2.sample_t(T)
+        o2_XY = mpt.polar_to_xy(o2_R, o2_TH)
+        plots.append(o2_XY)
+        plot_opts.append({"marker":"o"})
+        
+        # x,y intersection point
         x_o2_x_mun_soi, y_o2_x_mun_soi = mpm.xy_at_rth(r_o2_x_mun_soi, th_o2_x_mun_soi)
         # Speed of stage in grand sys at SOI intersection
         s2_vx_o2_x_mun_soi, s2_vy_o2_x_mun_soi = mpm.vxy_at_th(vr_o2_x_mun_soi, vth_o2_x_mun_soi, th_o2_x_mun_soi)
@@ -149,16 +157,16 @@ if __name__ == "__main__" :
         rw.write("New orbit in Mun frame r0 is", o3.r0)
         
         # Plot stage orbit in Mun reference frame
-        o3_phi_interval = 0.8*(o3.phi_max - o3.phi_i)
-        rw.write("o3_phi_interval", o3_phi_interval)
-        o3_dphi = o3_phi_interval/100.0
-        o3_TH = [s2_th_mun + o3_dphi*i for i in range(101)]
-        o3_R = o3.sample_th(o3_TH)
-        o3_plt = mpt.polar_to_xy(o3_R,o3_TH)
-        o3_plt2 = mpt.offset_xy(o3_plt, mun_frm.x, mun_frm.y)
-        plots.append(o3_plt2)
-        plot_opts.append({"marker":"x"})
-
+        o3_t_insert = o3.t_at_th(o3.th_i)
+        rw.write("Mun orbit insertion t", o3_t_insert)
+        dt = -o3_t_insert / 50.0
+        T=[o3_t_insert + dt*i for i in range(51)]
+        o3_R, o3_TH = o3.sample_t(T)
+        o3_XY = mpt.polar_to_xy(o3_R, o3_TH)
+        o3_XY = mpt.offset_xy(o3_XY, mun_frm.x, mun_frm.y)
+        plots.append(o3_XY)
+        plot_opts.append({"marker":"o"})
+        
         if o3.phi_i < 0.0 :
             # Before r0
             dv_o3_o4 = o3.r0_dv_to_e(0.0)
@@ -181,13 +189,20 @@ if __name__ == "__main__" :
             o4_pltc = mpt.polar_to_xy(o4_R, o4_TH)
             o4_plt2c = mpt.offset_xy(o4_pltc, mun_frm.x, mun_frm.y)
             plots.append(o4_plt2c)
-            plot_opts.append({"marker":"s"})
+            plot_opts.append(None)
             
         else :
             rw.write("DV to circ orbit about mun is", "NONE: PAST R0!")
 
-        dvdata = zip(dv_desc, dv)
-        rw.tabulate(["Desc","DV"], dvdata)
+    else :
+        # Plot full elliptical orbit
+        o2_TH=[i*math.pi*2/100 for i in range(101)]
+        o2_R=o2.sample_th(o2_TH)
+        plots.append(mpt.polar_to_xy(o2_R, o2_TH))
+        plot_opts.append(None)
+
+    dvdata = zip(dv_desc, dv)
+    rw.tabulate(["Desc","DV"], dvdata)
 
     # Plot everything
     fig, ax = plt.subplots()

@@ -153,7 +153,6 @@ def xy_at_rth(r, th) :
     
     return (x, y)
 
-
 class Frame2D :
     '''A 2D reference frame
 
@@ -366,35 +365,36 @@ class Orbit :
             x2 = math.pow(h,3.0)/math.pow((1.0 - e*e),1.5)
             self.tau = 2.0*math.pi*x1*x2
 
-
         # Set up time integrator for phi.  Works for all orbits.
             
         A = h / math.pow(r0*(1.0 + e), 2.0)
-
         def f(t, y) :
             x1 = 1.0 + e*math.cos(y[0])
             ans = A*x1*x1
             return [ ans ]
-
         solv = ode(f).set_integrator("vode", method="adams")
 
-        orbtype = self.classify()
+        # t=0 -> phi=0
+        solv.set_initial_value(0.0, 0.0)
+
+        # Compute phi vs time with t=0 at phi=0 (r=r0)
+
+        self.phivt = [0.0]
+        self.solnt = [0.0]
         
+        orbtype = self.classify()
         if orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
             
-            solv.set_initial_value( 0.0, 0.0 )
-
-            self.phivt = [ [0.0] ]
-            self.solnt = [ 0.0 ]
-
             dt = self.tau / 1000.0
             phi = 0.0
             
             while solv.successful() and phi < 2.0*math.pi :
                 phi = solv.integrate( solv.t + dt )
 
-                self.phivt.append( list(phi) )
-                self.solnt.append( solv.t )
+                # print(repr(solv.t))
+                
+                self.phivt.append(phi[0])
+                self.solnt.append(solv.t)
 
             self.phi_max = math.inf
             self.phi_min = -math.inf
@@ -409,19 +409,24 @@ class Orbit :
             if self.phi_i < self.phi_min :
                 raise Exception("Logic Error:  phi_i < phi_min")
             
-            solv.set_initial_value( self.phi_i, 0.0 )
-
-            self.phivt = [ [self.phi_i] ]
-            self.solnt = [ 0.0 ]
-
             dt = 0.1
             phi = 0.0
             
-            while solv.successful() and solv.t < 10000.0 :
+            while solv.successful() and solv.t < 20000.0 :
+                
                 phi = solv.integrate( solv.t + dt )
 
-                self.phivt.append( list(phi) )
-                self.solnt.append( solv.t )
+                self.phivt.append(phi[0])
+                self.solnt.append(solv.t)
+
+            neg_t = [-t for t in self.solnt[1:]]
+            neg_t.reverse()
+
+            neg_phi = [-phi for phi in self.phivt[1:]]
+            neg_phi.reverse()
+
+            self.solnt = neg_t + self.solnt
+            self.phivt = neg_phi + self.phivt 
 
     def classify( self ) :
         if self.e < 0 :
@@ -469,7 +474,7 @@ class Orbit :
             if phi > phistop_2 :
                 return math.inf
             
-            r = self.y_phi(phi)[1]
+            r = self.y_at_phi(phi)[1]
             # Bad value of phi for the orbit
             if r is None :
                 return math.inf
@@ -517,8 +522,10 @@ class Orbit :
             # Look for the opposite type of extremum
             sign *= -1.0
 
-    def phi_t(self, t) :
-        '''UNDER CONSTRUCTION
+    def phi_at_t(self, t) :
+        '''(UNDER CONSTRUCTION) Returns orbit angle at specified time
+
+        :param float t: time from {currently: insertion point for e<1, r0 for e>=1} 
 
         :Todo:
 
@@ -527,7 +534,7 @@ class Orbit :
         - For parabola and hyperbola, propagate like ksp.FlyingStage where the time series is interpolated and extended as needed
 
         '''
-        return mm.bisect_interp(t, self.solnt, self.phivt)[0]
+        return mm.bisect_interp(t, self.solnt, self.phivt)
     
     def r0_dv_to_e(self, e) :
         '''Computes *signed* delta V to change eccentricity at r0
@@ -551,11 +558,38 @@ class Orbit :
         for phi in PHI :
             if phi > self.phi_max or phi < -self.phi_max :
                 raise Exception("PHI out of range")
-            R.append(self.y_phi(phi)[1])
+            R.append(self.y_at_phi(phi)[1])
 
         return R
 
-    def y_phi(self, phi) :
+    def sample_t(self, T) :
+        '''(UNDER CONSTRUCTION) Generates a series of r, phi values for an input series of time values.
+
+        :param iterable T: A list of times
+
+        :returns: ([<r values>], [<phi values>])
+
+        :todo: make sure to experiment with t > tau (for e<1) and t > solnt[-1] (for e>=1)
+        '''
+        R = []
+        PHI = []
+
+        for t in T :
+            phi = self.phi_at_t(t)
+            if phi > self.phi_max or phi < -self.phi_max :
+                raise Exception("PHI out of range")
+            PHI.append(phi)
+            R.append(self.y_at_phi(phi)[1])
+
+        return (R, PHI)
+
+    def t_at_phi(self, phi) :
+        '''(UNDER CONSTRUCTION)
+        MIGHT HAVE TO ENFORCE -PI to PI range on phi
+        '''
+        return mm.bisect_interp(phi, self.phivt, self.solnt)
+
+    def y_at_phi(self, phi) :
         '''Returns a polar motion state vector.
         '''
         
@@ -620,26 +654,35 @@ class OrientedOrbit(Orbit) :
         super().__init__(y, GM)
 
         m, r, th_i, vr, om = y
-        
+
+        self.th_i = th_i
         self.th0 = th_i - self.phi_i
 
     def intersect_soi(self, th_soi, d_soi, r_soi):
-        phi_x = super().intersect_soi(self.phi(th_soi), d_soi, r_soi)
+        phi_x = super().intersect_soi(self.phi_at_th(th_soi), d_soi, r_soi)
         th_x = [phi + self.th0 for phi in phi_x]
         return th_x
-        
+
+    def sample_t(self, T) :
+        R, PHI = super().sample_t(T)
+        TH = [self.th_at_phi(phi) for phi in PHI]
+        return (R, TH)
+    
     def sample_th(self, TH) :
-        PH = [self.phi(th) for th in TH]
+        PH = [self.phi_at_th(th) for th in TH]
         return self.sample_phi(PH)
         
-    def phi(self, th) :
+    def phi_at_th(self, th) :
         return (th - self.th0)
 
+    def t_at_th(self, th) :
+        return self.t_at_phi(self.phi_at_th(th))
+    
     def th_at_phi(self, phi) :
         return (phi + self.th0)
 
-    def y_th(self, th):
-        Y = self.y_phi(self.phi(th))
+    def y_at_th(self, th):
+        Y = self.y_at_phi(self.phi_at_th(th))
         Y[2] = self.th_at_phi(Y[2])
         return Y
 

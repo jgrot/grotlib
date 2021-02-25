@@ -30,9 +30,6 @@ import math
 import os
 import pickle
 
-
-
-
 def T2DS1ME() :
     
     print("Testing traj2d with one stage with mixed engines (T2DS1ME)")
@@ -212,9 +209,9 @@ def TORBIT() :
     t2 = 0.5*o.tau
     t3 = 0.75*o.tau
 
-    phi1 = o.phi_t(t1)
-    phi2 = o.phi_t(t2)
-    phi3 = o.phi_t(t3)
+    phi1 = o.phi_at_t(t1)
+    phi2 = o.phi_at_t(t2)
+    phi3 = o.phi_at_t(t3)
     
     if not cmp.fsame(phi1, 0.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(phi2, math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -234,9 +231,9 @@ def TORBIT() :
     t2 = 0.5*o.tau
     t3 = 0.75*o.tau
 
-    phi1 = o.phi_t(t1)
-    phi2 = o.phi_t(t2)
-    phi3 = o.phi_t(t3)
+    phi1 = o.phi_at_t(t1)
+    phi2 = o.phi_at_t(t2)
+    phi3 = o.phi_at_t(t3)
 
     phi1_truth = 2.2431742381218593
     phi3_truth = 2.0*math.pi - phi1_truth
@@ -259,9 +256,9 @@ def TORBIT() :
     t2 = 100.0
     t3 = 1000.0
 
-    phi1 = o.phi_t(t1)
-    phi2 = o.phi_t(t2)
-    phi3 = o.phi_t(t3)
+    phi1 = o.phi_at_t(t1)
+    phi2 = o.phi_at_t(t2)
+    phi3 = o.phi_at_t(t3)
 
     if not cmp.fsame(phi1, 0.0484306562739271, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(phi2, 0.46686597787401796, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -280,9 +277,9 @@ def TORBIT() :
     t2 = 100.0
     t3 = 1000.0
 
-    phi1 = o.phi_t(t1)
-    phi2 = o.phi_t(t2)
-    phi3 = o.phi_t(t3)
+    phi1 = o.phi_at_t(t1)
+    phi2 = o.phi_at_t(t2)
+    phi3 = o.phi_at_t(t3)
 
     if not cmp.fsame(phi1, 0.11646814389316827, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(phi2, 0.8124500214444215, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
