@@ -194,6 +194,7 @@ def TORBIT() :
     r = 670E3
     
     # Test circular orbit
+    print("Checking forced circular orbit (v_r ignored)")
     o = mpm.Orbit( [ 2000, r, 0, 100.0, 0.01 ], GM, force="circle" )
     # Eccentricity must be identically zero, so tolfrac is zero
     if not cmp.fsame(o.e, 0.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -218,6 +219,7 @@ def TORBIT() :
     if not cmp.fsame(phi3, 1.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     # Test ellipse
+    print("Checking elliptical orbit")
     o = mpm.Orbit( [ 2000, r, 0, 0.0, 0.004 ], GM )
     if not cmp.fsame(o.e, 0.3632317280453257, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -242,6 +244,7 @@ def TORBIT() :
     if not cmp.fsame(phi3, phi3_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     # Test parabola
+    print("Checking forced parabolic orbit (v_r ignored)")
     o = mpm.Orbit( [ 2000, r, 0, 100.0, 0.01 ], GM, force="parabola" )
     # e must be identically 1.0
     if not cmp.fsame(o.e, 1.0, tolfrac=0.0, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -265,6 +268,7 @@ def TORBIT() :
     if not cmp.fsame(phi3, 1.9248853641334023, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     # Test hyperbola (Note, positive vr entry point)
+    print("Checking hyperbolic orbit with insertion not at phi=0 (v_r > 0)")
     o = mpm.Orbit( [ 2000, r, 0.0, 100.0, 0.01 ], GM)
     if not cmp.fsame(o.e, 7.521273426540002, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
     if not cmp.fsame(o.k, 706E13, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
@@ -281,9 +285,9 @@ def TORBIT() :
     phi2 = o.phi_at_t(t2)
     phi3 = o.phi_at_t(t3)
 
-    if not cmp.fsame(phi1, 0.11646814389316827, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi2, 0.8124500214444215, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi3, 1.5793754092713874, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi1, 0.09973240289205285, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi2, 0.8035063096303883, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    if not cmp.fsame(phi3, 1.5791723428116158, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     print("SUCCESS")
 
