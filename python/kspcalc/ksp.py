@@ -164,42 +164,58 @@ engine_db = {
         "model"  : "BACC",
         "name"   : "Thumper",
         "rate"   : (19.423, "su"), # Per second (found under Propellant)
-        "amount" : (820, "su"),
-        "ispsl"  : (175, "s"), # Isp at sea level
-        "ispvac" : (210, "s")  # Isp at vacuum
+        "amount" : (820.0, "su"),
+        "ispsl"  : (175.0, "s"), # Isp at sea level
+        "ispvac" : (210.0, "s")  # Isp at vacuum
     },
     "F3S0" : {
         "model"  : "F3S0",
         "name"   : "Shrimp",
         "rate"   : (1.897, "su"), # Per second (found under Propellant)
-        "amount" : (90, "su"),
-        "ispsl"  : (190, "s"), # Isp at sea level
-        "ispvac" : (215, "s")  # Isp at vacuum
+        "amount" : (90.0, "su"),
+        "ispsl"  : (190.0, "s"), # Isp at sea level
+        "ispvac" : (215.0, "s")  # Isp at vacuum
     },
     "S2-17" : {
         "model"  : "S2-17",
         "name"   : "Thoroghbred",
         "rate"   : (100.494, "su"),
-        "amount" : (8000, "su"),
-        "ispsl"  : (205, "s"),
-        "ispvac" : (230, "s")
+        "amount" : (8000.0, "su"),
+        "ispsl"  : (205.0, "s"),
+        "ispvac" : (230.0, "s")
     },
     "RT-5" : {
         "model"  : "RT-5",
         "name"   : "Flea",
         "rate"   : (15.821, "su"),
-        "amount" : (140, "su"),
-        "ispsl"  : (140, "s"),
-        "ispvac" : (165, "s")
+        "amount" : (140.0, "su"),
+        "ispsl"  : (140.0, "s"),
+        "ispvac" : (165.0, "s")
     },
     "RT-10" : {
         "model"  : "RT-10",
         "name"   : "Hammer",
         "rate"   : (15.827, "su"),
-        "amount" : (375, "su"),
-        "ispsl"  : (170, "s"),
-        "ispvac" : (195, "s")        
-    }
+        "amount" : (375.0, "su"),
+        "ispsl"  : (170.0, "s"),
+        "ispvac" : (195.0, "s")        
+    },
+    "LFB KR-1x2" : {
+        "model"  : "LFB KR-1x2",
+        "name"   : "Twin-Boar",
+        "rate"   : ((61.183, "lu"),(74.779, "lu")), # (fuel, ox)
+        "amount" : ((2880.0, "lu"),(3520.0, "lu")),
+        "ispsl"  : (280.0, "s"),
+        "ispvac" : (300.0, "s")
+    },
+    "LV-T45" : {
+        "model"  : "LV-T45",
+        "name"   : "Swivel",
+        "rate"   : ((6.166, "lu"),(7.536, "lu")), # (fuel, ox)
+        "amount" : ((0.0, "lu"),(0.0, "lu")),
+        "ispsl"  : (250.0, "s"),
+        "ispvac" : (320.0, "s")
+    },
 }
 
 def augmentBodyDbs() :
@@ -860,7 +876,11 @@ class Stage :
         if mstage_kg <= self.me_kg :
             return 0.0
 
+        # Regenerate DV table (if needed)
         self._dv_v_m(p_Pa)
+
+        if mstage_kg >= self.m0_kg :
+            return self.dv_nodes[-1]
 
         return mm.bisect_interp(mstage_kg, self.mass_nodes, self.dv_nodes)
 
@@ -1039,18 +1059,21 @@ class FlyingStage :
 
         while t <= t1 :
             
-            Y, crashed, flyer = self.flyTo( t )
+            Y, crashed, flyer = self.flyTo(t)
 
             if crashed :
                 break
             
             m, r, th, vr, om = Y
 
+            throttle = self.fthrottle(t, Y)
+            n_r, n_th = self.fthrustdir(t, Y, self)
+            
             om_gnd = om - flyer.body_omega
             
             # Compute other things
-            x = ( r * math.cos( th ) )
-            y = ( r * math.sin( th ) )
+            x = r*math.cos(th)
+            y = r*math.sin(th)
 
             craft_asl_dvremain = flyer.dv_at_m( m, C_p0 )
             craft_dvremain = flyer.dv_at_m( m, flyer.fpress.call(r-flyer.R)[0] )
@@ -1062,14 +1085,14 @@ class FlyingStage :
             vom = r*om
             spd = math.sqrt( vr*vr + vom*vom )
             
-            row = [ flyer.stage_name, t, m, r, th, vr, om, om_gnd,
+            row = [ flyer.stage_name, t, m, throttle, n_r, n_th, r, th, vr, om, om_gnd,
                     stage_dvremain, craft_asl_dvremain, craft_dvremain, spd_gnd, spd ]
 
             rowdat.append(row)
 
             t += dt
 
-        headers = [ "stage", "time", "mass", "r", "theta", "v_r", "omega",
+        headers = [ "stage", "time", "mass", "throttle", "nr", "nth", "r", "theta", "v_r", "omega",
                     "rel omega", "Stage DV (ASL)", "Craft DV (ASL)",
                     "Craft DV", "Ground speed", "Orbit Speed" ]
         
