@@ -31,6 +31,7 @@ import sys
 import tabulate
 
 # Grotlib modules
+import compare as cmp
 import mks_polar_motion as mpm
 import moremath as mm
 import mpl_tools as mpt
@@ -83,11 +84,12 @@ C_p0 = 100174.2           # Pa (ground pressure on Kerbin)
 kerbin_day_s = 21549.0
 mun_rot_period_s = 6.0*kerbin_day_s + 2.0*3600.0 + 36*60.0
 minmus_rot_period_s = 1.0*kerbin_day_s + 5.0*3600.0 + 13*60.0
+# Fuel to ox burn rate ratio
+f_to_o_eng = 0.8181842495887883
 
 ##
 ## DATABASES
 ##
-
 
 # Solar System Data
 bodies_db = {
@@ -146,7 +148,8 @@ mass_db = {
     # Number of kgs in unit
     "kg" : 1.0,
     "t" : 1000.0,
-    "su" : 7.5
+    "su" : 7.5,
+    "lu" : 5.0
 }
 
 time_db = {
@@ -163,6 +166,7 @@ engine_db = {
     "BACC" : {
         "model"  : "BACC",
         "name"   : "Thumper",
+        "type"   : "s",
         "rate"   : (19.423, "su"), # Per second (found under Propellant)
         "amount" : (820.0, "su"),
         "ispsl"  : (175.0, "s"), # Isp at sea level
@@ -171,6 +175,7 @@ engine_db = {
     "F3S0" : {
         "model"  : "F3S0",
         "name"   : "Shrimp",
+        "type"   : "s",
         "rate"   : (1.897, "su"), # Per second (found under Propellant)
         "amount" : (90.0, "su"),
         "ispsl"  : (190.0, "s"), # Isp at sea level
@@ -179,6 +184,7 @@ engine_db = {
     "S2-17" : {
         "model"  : "S2-17",
         "name"   : "Thoroghbred",
+        "type"   : "s",
         "rate"   : (100.494, "su"),
         "amount" : (8000.0, "su"),
         "ispsl"  : (205.0, "s"),
@@ -187,6 +193,7 @@ engine_db = {
     "RT-5" : {
         "model"  : "RT-5",
         "name"   : "Flea",
+        "type"   : "s",
         "rate"   : (15.821, "su"),
         "amount" : (140.0, "su"),
         "ispsl"  : (140.0, "s"),
@@ -195,6 +202,7 @@ engine_db = {
     "RT-10" : {
         "model"  : "RT-10",
         "name"   : "Hammer",
+        "type"   : "s",
         "rate"   : (15.827, "su"),
         "amount" : (375.0, "su"),
         "ispsl"  : (170.0, "s"),
@@ -203,6 +211,7 @@ engine_db = {
     "LFB KR-1x2" : {
         "model"  : "LFB KR-1x2",
         "name"   : "Twin-Boar",
+        "type"   : "l",
         "rate"   : ((61.183, "lu"),(74.779, "lu")), # (fuel, ox)
         "amount" : ((2880.0, "lu"),(3520.0, "lu")),
         "ispsl"  : (280.0, "s"),
@@ -211,11 +220,20 @@ engine_db = {
     "LV-T45" : {
         "model"  : "LV-T45",
         "name"   : "Swivel",
+        "type"   : "l",
         "rate"   : ((6.166, "lu"),(7.536, "lu")), # (fuel, ox)
         "amount" : ((0.0, "lu"),(0.0, "lu")),
         "ispsl"  : (250.0, "s"),
         "ispvac" : (320.0, "s")
     },
+}
+
+tanks_db = {
+    "FL-T400" : {
+        "model" : "FL-T400",
+        "name"  : "FL-T400 Fuel Tank",
+        "amount": ((180.0, "lu"),(220.0, "lu")) # (fuel, ox)
+    }
 }
 
 def augmentBodyDbs() :
@@ -618,17 +636,293 @@ class DragDivergence(mm.Functor) :
     
 dd = DragDivergence()
 
+
+class PropulsionPhase :
+    '''Given a collection of engines and tanks (with the same burn time)
+    represents an equivalent single engine with a specific burn time,
+    burn rate, Isp SL and Isp vac.
+
+    The term "phase" refers to a DT section of the Mfuel v Time graph.
+
+    CURRENT ASSUMPTIONS:
+
+    - SRM phases contain only one type of SRM.  This is enforced in Stage._processEngines.
+
+    - Fuel and ox are always in the correct proportions and fuel_level
+      for liquid engines is the sum of the two.  Burn rate is the sum
+      of the two.
+
+    '''
+    
+    def __init__(self) :
+        # Currently only supporting either solid or liquid since it
+        # would be a little nuts to mix the two such that the burn
+        # time is equal.
+        self.type = None        # "s" or "l"
+        self.burn_time = None   # seconds
+        self.burn_rate = None   # kg/s
+        self.ispsl = None       # m/s
+        self.ispvac = None      # m/s
+        self.engine_specs = []  # [(name, n, thrust_limit, fuel_level)]
+        self.tank_specs = []    # [(name, n, fuel_level)]
+
+    def _compute_parameters(self) :
+        
+        # Currently only needed for liquid systems.
+        if self.type != "l" :
+            raise Exception("This method does not yet support SRMs")
+
+        # Add up all the fuel and oxidizer
+        mfuel_sum = 0.0 # kg
+        mox_sum   = 0.0 # kg
+        
+        for tank_spec in self.tank_specs :
+            
+            tank_model, ntanks, fuel_level = tank_spec
+
+            if not tank_model in tanks_db :
+                raise Exception("Tank %s is not in tanks_db" % tank_model)
+
+            tank_rec = tanks_db[tank_model]
+
+            max_fuel, u = tank_rec["amount"][0]
+            max_fuel *= uconv(mass_db, u, "kg") # kg
+
+            max_ox, u = tank_rec["amount"][1]
+            max_ox *= uconv(mass_db, u, "kg") # kg
+
+            if fuel_level is not None :
+                liq_level, u = fuel_level
+                liq_level *= uconv(mass_db, u, "kg")
+
+                if liq_level <= 0.0 or liq_level > max_fuel + max_ox :
+                    raise Exception("Modified fuel level out of range")
+
+                liq_frac = liq_level / (max_fuel + max_ox)
+
+            else :
+
+                liq_frac = 1.0
+
+            mfuel = ntanks*liq_frac*max_fuel
+            mox   = ntanks*liq_frac*max_ox
+            
+            fo = mfuel / mox
+            if not cmp.fsame(fo, f_to_o_eng, tolfrac=1E-4, report_to=None) :
+                raise Exception("Unsupported: fuel and ox ratios must be in engine burn rate proportions for tank %s" % tank_model)
+
+            mfuel_sum += mfuel # kg
+            mox_sum   += mox # kg
+
+        # Add up all the engine burn rates and also additional fuel amounts
+
+        burn_rate_sum = 0.0 # kg/s
+        thrust_vac_sum = 0.0 # N
+        thrust_sl_sum = 0.0 # N
+
+        for engine_spec in self.engine_specs :
+            
+            engine_model, neng, thrust_limit, fuel_level = engine_spec
+
+            if not engine_model in engine_db :
+                raise Exception("Engine %s is not in engine_db" % engine_model)
+
+            engine_rec = engine_db[engine_model]
+
+            #
+            # Fuel and ox
+            #
+
+            max_fuel, u = engine_rec["amount"][0]
+            max_fuel *= uconv(mass_db, u, "kg") # kg
+
+            max_ox, u = engine_rec["amount"][1]
+            max_ox *= uconv(mass_db, u, "kg") # kg
+
+            if (max_fuel + max_ox) > 0.0 :
+            
+                if fuel_level is not None :
+                    liq_level, u = fuel_level
+                    liq_level *= uconv(mass_db, u, "kg")
+
+                    if liq_level <= 0.0 or liq_level > max_fuel + max_ox :
+                        raise Exception("Modified fuel level out of range")
+
+                    liq_frac = liq_level / (max_fuel + max_ox)
+
+                else :
+
+                    liq_frac = 1.0
+
+                mfuel = neng*liq_frac*max_fuel
+                mox   = neng*liq_frac*max_ox
+                            
+                fo = mfuel_sum / mox_sum
+                if not cmp.fsame(fo, f_to_o_eng, report_to=None) :
+                    raise Exception("Unsupported: fuel and ox ratios must be in engine burn rate proportions for engine %s" % engine_model)
+
+            else :
+
+                mfuel = 0.0
+                mox   = 0.0
+
+            mfuel_sum += mfuel
+            mox_sum   += mox
+
+            #
+            # Burn rate
+            #
+            
+            max_fburn_rate, u = engine_rec["rate"][0]
+            max_fburn_rate *= uconv(mass_db, u, "kg") # kg/s
+
+            max_oburn_rate, u = engine_rec["rate"][1]
+            max_oburn_rate *= uconv(mass_db, u, "kg") # kg/s
+            
+            if thrust_limit > 100.0 or thrust_limit <= 0.0 :
+                raise Exception("Thrust limiter out of range")
+
+            fburn_rate = neng*0.01*thrust_limit*max_fburn_rate # kg/s
+            oburn_rate = neng*0.01*thrust_limit*max_oburn_rate # kg/s
+
+            fo = fburn_rate / oburn_rate
+            if not cmp.fsame(fo, f_to_o_eng, tolfrac=1E-4, report_to=None) :
+                raise Exception("Logic error: fuel and ox burn rate ratio is incorrect for engine %s.  Expected: %s, actual: %s" % (engine_model, fo, f_to_o_eng))
+
+            burn_rate = fburn_rate + oburn_rate
+            burn_rate_sum += burn_rate
+            
+            #
+            # Equivalent Isp
+            #
+            
+            ispsl, u = engine_rec["ispsl"]
+            ispsl *= uconv(isp_db, u, "m/s")
+
+            ispvac, u = engine_rec["ispvac"]
+            ispvac *= uconv(isp_db, u, "m/s")
+
+            thrust_sl = ispsl*burn_rate
+            thrust_vac = ispvac*burn_rate
+
+            thrust_sl_sum += thrust_sl
+            thrust_vac_sum += thrust_vac
+
+        mliq = mfuel_sum + mox_sum
+        
+        self.burn_time = mliq / burn_rate_sum
+        self.burn_rate = burn_rate_sum
+        self.ispsl = thrust_sl_sum / burn_rate_sum
+        self.ispvac = thrust_vac_sum / burn_rate_sum
+            
+    def _add_le(self, engine_rec, nengine, thrust_limit, fuel_level) :
+
+        if self.type is None :
+            # New propulsion phase
+            self.type = "l"
+
+        if engine_rec["type"] != self.type :
+            raise Exception("Logic error: attempt to add liquid engine to solid motor propulsion phase")
+
+        # Currently, can always add a liquid burner.
+        self.engine_specs.append((engine_rec["model"], nengine, thrust_limit, fuel_level))
+        self._compute_parameters()
+        return True
+
+    def _add_srm(self, engine_rec, nmotor, thrust_limit, fuel_level) :
+        '''Add a group of identical SRMs
+
+        :param dict engine_rec: a record from engines_db
+        :param integer nmotor: number of SRMs in this group
+        :param thrust_limit: >0 - 100
+        :param tuple fuel_level: (float <amount>, string <unit>) alternate amount of fuel (None -> max)
+
+        :returns: True if succeeded, False otherwise
+        '''
+
+        if self.type is not None :
+            print("Only one model of SRM is allowed at this time")
+            return False
+
+        self.type = "s"
+
+        max_burn_rate, u = engine_rec["rate"]
+        max_burn_rate *= uconv(mass_db, u, "kg") # kg/s
+
+        if thrust_limit > 100.0 or thrust_limit <= 0.0 :
+            raise Exception("Thrust limiter out of range")
+
+        # Burn rate for one motor of this group (they are all the same)
+        burn_rate = 0.01 * thrust_limit * max_burn_rate # kg/s
+
+        # Fuel amount for one motor of this group (they are all the same)
+        max_fuel, u = engine_rec["amount"]
+        max_fuel *= uconv(mass_db, u, "kg") # kg
+
+        if fuel_level is None :
+            fuel_level = max_fuel # kg
+        else :
+            fuel_level, u = fuel_level
+            fuel_level *= uconv(mass_db, u, "kg") # kg
+
+            if fuel_level > max_fuel :
+                raise Exception("Input fuel level exceeds the design level of %s" % srm_name)
+        
+        ispsl, u = engine_rec["ispsl"]
+        ispsl *= uconv(isp_db, u, "m/s")
+
+        ispvac, u = engine_rec["ispvac"]
+        ispvac *= uconv(isp_db, u, "m/s")
+            
+        self.burn_time = fuel_level / burn_rate
+        self.burn_rate = nmotor*burn_rate # kg/s
+        self.ispsl = ispsl
+        self.ispvac = ispvac
+        self.engine_specs.append((engine_rec["model"], nmotor, thrust_limit, fuel_level))
+        return True
+
+    def add_engine(self, ename, nengines, thrust_limit=100.0, fuel_level=None) :
+        '''Adds a group of identical engines
+
+        :param string ename: name of engine in engines_db
+        :param integer nengines: number of engines in this group (with the same specs)
+        :param thrust_limit: >0 - 100
+        :param tuple fuel_level: (float <amount>, string <unit>) alternate amount of fuel (None -> max)
+        '''
+
+        if ename not in engine_db :
+            raise Exception("Could not find %s in the engine database" % ename)
+            
+        engine_rec = engine_db[ename]
+
+        added_engine = False
+        
+        if engine_rec["type"] == "s" :
+            added_engine = self._add_srm(engine_rec, nengines, thrust_limit, fuel_level)
+        elif engine_rec["type"] == "l" :
+            added_engine = self._add_le(engine_rec, nengines, thrust_limit, fuel_level)
+        else :
+            # There is also a helium engine we can add later
+            raise Exception("Logic error: engine database contains an invalid engine type")
+
+        return added_engine
+        
+    def add_tank(self, tank_model, ntanks, fuel_amount=None) :
+        self.tank_specs.append((tank_model, ntanks, fuel_amount))
+        self._compute_parameters()
+    
 class Stage :
     '''Model of an isolated stage.
 
     :param tuple m0: (<mass value>,'<mass unit>') mass of stage with engines completely full.  If None, assumes init via loadJSON().
-    :param list engines: [ (N1, "Name of engine 1"), etc. ]
+    :param list engines: [(N1, "Name of engine 1", thrust_limiter(>0-100), alt_fuel_lev | None), ...]
     :param float dragco: currently lumped term of 1/2*Cd*A
     '''
     
-    def __init__(self, m0 = None, engines = [], dragco = 0.0) :
+    def __init__(self, m0 = None, engines = [], tanks = [], dragco = 0.0) :
         self.m0 = m0
         self.engines = engines
+        self.tanks = tanks
         self.dragco = dragco
 
         # Function cacheing
@@ -648,6 +942,8 @@ class Stage :
         '''Generates a DV node for each node in self.mass_nodes
 
         TODO: ascii art for the dv v m graph from rocket book note "RB 2021-01-30 04.15.00.pdf"
+
+        
         '''
 
         if (p_Pa == self._dv_v_m_p) :
@@ -680,40 +976,71 @@ class Stage :
     def _processEngines(self) :
         '''(private) Preprocess engine data.'''
 
-        engines_by_t_burn = []
+        ## UNDER CONSTRUCTION ##
+
+        # Here, we sort engine configurations by burn time.
+
+        phases = []
 
         for eng_rec in self.engines :
 
-            if len(eng_rec) == 3 :
-                n_eng, ename, fuel_mass = eng_rec
-            elif len(eng_rec) == 2 :
-                n_eng, ename = eng_rec
-                fuel_mass = None
+            print("DEBUG PROCESSING ", repr(eng_rec))
 
-            engine = engine_db[ename]
-
-            if fuel_mass is None:
-                # Get from database
-                mfuel, mfuelu = engine["amount"]
-            else :
-                mfuel, mfuelu = fuel_mass
+            added_engine = False
+            
+            for phase in phases :
                 
-            mfuel_kg = mfuel * uconv( mass_db, mfuelu, "kg" )
+                # Try to add engine_rec to the phase.  If everything
+                # checks out in terms of engine type and burn time then
+                # the add succeeds and we are done.
 
-            rate, rateu = engine["rate"]
-            rate_kgps = rate * uconv( mass_db, rateu, "kg" )
+                added_engine = phase.add_engine(*eng_rec)
+                if added_engine : break
 
-            t_burn = mfuel_kg / rate_kgps
+            if not added_engine :
 
-            engines_by_t_burn.append( (t_burn, n_eng, engine) )
+                # If the engine could not be added to existing phases, then
+                # create a new phase
+                
+                prop_phase = PropulsionPhase()
+                prop_phase.add_engine(*eng_rec)
+                print("DEBUG CREATED NEW PROP PHASE")
+                print("DEBUG NEW PROP PHASE ENGINE SPECS ", repr(prop_phase.engine_specs))
 
-        engines_by_t_burn.sort()
-        engines_by_t_burn.reverse()
+                phases.append(prop_phase)
 
-        self.fmass_nodes = [0.0]
-        self.rate_edges = []
-        rate_kgps_sum = 0.0
-        rate_rec = []
+
+        # Add fuel tanks.  New phases are not created for fuel tanks,
+        # they must find a home in a liquid propulsion phase,
+        # otherwise it is an error.
+        if self.tanks is not None :
+            for tank_rec in self.tanks :
+
+                added_tank = False
+
+                for phase in phases :
+
+                    # Add tank to the first (and only for now) liquid prop phase.
+
+                    if phase.type == "l" :
+
+                        phase.add_tank(*tank_rec)
+                        added_tank = True
+
+                        break
+
+                    if added_tank : break
+
+                if not added_tank :
+
+                    raise Exception("Could not find a propulsion phase for fuel tank")
+
+        print("DEBUG NUMBER OF PHASES ", len(phases))
+
+        # Sort phase by burn time
+        phases_by_t = [(p.burn_time, p) for p in phases]
+        phases_by_t.sort()
+        phases_by_t.reverse()
 
         #
         #       |o M_full
@@ -729,34 +1056,45 @@ class Stage :
         #  Build a rate vs mass function using the notions in the plot above.
         #
         #  rate record: [ (<engine group max mass rate>, <engine group ASL Isp>, <engine group Vac Isp>), ... ]
-        for irec, eng_rec in enumerate(engines_by_t_burn) :
+
+        self.fmass_nodes = [0.0]
+        self.rate_edges = []
+        rate_kgps_sum = 0.0
+        rate_rec = []
+
+        # process engines starting from the longest burning engines
+        # for irec, eng_rec in enumerate(engines_by_t_burn) :
+        for iphase, rec in enumerate(phases_by_t) :
             
-            t_burn, n_eng, engine = eng_rec
+            t_burn, phase = rec
             
-            # Note: engines list is sorted by *descending* burn time
+            # Note: propulsion phases are sorted by *descending* burn
+            # time Try to get previous burn time, if we are out of
+            # phase records, then end with t=0.
             try :
-                t_burn_prev, x, x = engines_by_t_burn[irec+1]
+                t_burn_prev, phase_prev = phases_by_t[iphase+1]
             except :
                 t_burn_prev = 0.0
-                
+
+            # Compute burn time interval
             DT = t_burn - t_burn_prev # DTi in the plot
 
-            rate, rateu = engine["rate"]
-            rate_kgps = n_eng * rate * uconv( mass_db, rateu, "kg" )
-            rate_kgps_sum += rate_kgps
+            # This is used to compute DMass to get the mass nodes.
+            rate_kgps_sum += phase.burn_rate
 
-            ispsl, ispslu = engine["ispsl"]
-            ispsl_mps = ispsl * uconv( isp_db, ispslu, "m/s" )
+            # Add this engine group to the list of currently burning engine groups
+            rate_rec.append((phase.burn_rate, phase.ispsl, phase.ispvac))
 
-            ispvac, ispvacu = engine["ispvac"]
-            ispvac_mps = ispvac * uconv( isp_db, ispvacu, "m/s" )
-
-            rate_rec.append( (rate_kgps, ispsl_mps, ispvac_mps) )
-
+            # Add the collection of running engine groups to the rate
+            # edges list.  Maybe come up with a new name for this?
+            # Probably don't need this?  Although it does simplify things.
             self.rate_edges.append( copy.copy(rate_rec) )
+
+            # Build list of masses at time nodes.
             self.fmass_nodes.append( self.fmass_nodes[-1] + DT*rate_kgps_sum )
 
-        self.engines_by_tburn = engines_by_t_burn
+        # self.engines_by_tburn = engines_by_t_burn
+        self.burn_phases = phases_by_t
         
         m0, m0u = self.m0
         m0_kg = m0 * uconv( mass_db, m0u, "kg" )
@@ -765,6 +1103,9 @@ class Stage :
         self.me_kg = m0_kg - self.fmass_nodes[-1]
         # Stage mass nodes
         self.mass_nodes = [ self.me_kg + m for m in self.fmass_nodes ]
+
+        print("DEBUG LEN SELF.BURN_PHASES ", len(self.burn_phases))
+        print("DEBUG SELF.BURN_PHASES[0].ENGINE_SPECS ", repr(self.burn_phases[0][1].engine_specs))
         
     def dmdt( self, mstage_kg, throttle ) :
         '''Compute stage dm/dt vs firing phase (via stage mass) and throttle level
@@ -809,18 +1150,24 @@ class Stage :
             m0 = self.fmass_nodes[iburn+1]
 
             ilast_eng = len(rate_rec)-1
-            t_burn = self.engines_by_tburn[ilast_eng][0]
+            t_burn = self.burn_phases[ilast_eng][0]
             
             row.append(t_burn)
             row.append(m0)
             row.append(m1)
 
             for ieng, rate in enumerate(rate_rec) :
-                t_burn, n_eng, engine = self.engines_by_tburn[ieng]
+
                 rate_tot, isp_sl, isp_vac = rate
-                # row.append(t_burn)
-                row.append(n_eng)
-                row.append(engine["name"])
+                
+                t_burn, phase = self.burn_phases[ieng]
+
+                # Build engine list string
+                words = []
+                for eng_name, n_eng, thrust_limit, fuel_amount in phase.engine_specs :
+                    words.append("%i@%s@%i%%" % (n_eng,eng_name,thrust_limit))
+                engines_str = " ".join(words)
+                row.append(engines_str)
                 row.append(rate_tot)
                 row.append(isp_sl)
                 row.append(isp_vac)
@@ -838,17 +1185,16 @@ class Stage :
         headers[1] = "Fuel M0"
         headers[2] = "Fuel M1"
 
-        nengrec = int((maxlen-3)/5)
+        nengrec = int((maxlen-3)/4)
         for ieng in range(nengrec) :
-            i = 3+(ieng*5)
-            headers[i] = "N Eng"
-            headers[i+1] = "Eng"
-            headers[i+2] = "Rate Tot"
-            headers[i+3] = "ISP SL"
-            headers[i+4] = "ISP Vac"
+            i = 3+(ieng*4)
+            headers[i]   = "Engines"
+            headers[i+1] = "Rate Tot"
+            headers[i+2] = "ISP SL"
+            headers[i+3] = "ISP Vac"
 
         print("\n###")
-        print("### STAGE ENGINE BURN SCHEDULE")
+        print("### STAGE BURN PHASES")
         print("###\n")
         print(tabulate.tabulate(tabrows, headers=headers))
         
@@ -892,6 +1238,10 @@ class Stage :
             data = json.load( f )
             self.m0 = data["m0"]
             self.engines = data["elist"]
+            try :
+                self.tanks = data["tanks"]
+            except :
+                self.tanks = None
             self.dragco = data["dragco"]
             self._assimilate( )        
 
