@@ -25,8 +25,8 @@ from scipy.optimize import minimize
 
 import ksp
 
-def falpha( t, y, flyer ) :
-    return 0.5 * math.pi
+def fthrustdir( t, y, flyer ) :
+    return (1.0, 0.0)
 
 instructions = [
     "Drag Term Finder",
@@ -67,8 +67,12 @@ if __name__ == "__main__" :
             return case_data["throttle"]
             
         stage = ksp.Stage( )
-        stage.loadJSON( ksp.pthdat("drag_tests/" + case_data["stage file"] ))
-        flyer = ksp.FlyingStage( stage, "stage", "Kerbin", fthrottle, falpha )
+        try :
+            stage.loadJSON(case_data["stage file"])
+        except :
+            stage.loadJSON( ksp.pthdat("drag_tests/" + case_data["stage file"] ))
+
+        flyer = ksp.FlyingStage(stage, "stage", "Kerbin", fthrottle, fthrustdir)
 
         htarget = case_data["htarget"]
         crash_time = case_data["crash time"]
