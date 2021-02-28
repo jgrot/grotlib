@@ -55,7 +55,7 @@ def T2DS1ME() :
             v,n = mpm.v_and_dir(y)
         return n
     
-    flyer = ksp.FlyingStage( stage_1, "Stage 1", "Kerbin", fthrottle, falpha )
+    flyer = ksp.FlyingStage(stage_1, "Stage 1", "Kerbin", fthrottle, falpha)
     flyer.launch( )
     # Fly until crash
     flyer.flyTo( 30000 )
