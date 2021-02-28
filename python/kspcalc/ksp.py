@@ -1462,7 +1462,7 @@ class FlyingStage :
         else :
             return mydv        
 
-    def flyTo( self, t ) :
+    def flyTo(self, t) :
         '''Advance and / or sample a trajectory.  Will sample from earlier stages if they exist.
 
         :param float t: trajectory time.
@@ -1482,12 +1482,10 @@ class FlyingStage :
                 raise Exception("input time is before launch time")
         
         if t >= self.solnt[-1] :
+            
             if not self.crashed :
                 while self.solv.successful() and t >= self.solv.t:
                     y = self.solv.integrate( self.solv.t + dt )
-                    
-                    
-                    
                     if y[1] <= self.R : ## y[1] := r
                         self.crashed = True
                         break
@@ -1495,13 +1493,13 @@ class FlyingStage :
                         self.maxr = max( y[1], self.maxr )
                         self.solnt.append( self.solv.t )
                         self.soln.append( list(y) )
+
             if self.crashed :
-                # print( "WARNING: FlyingStage is crashed at time %f" % t )
                 return ( copy.copy(self.soln[-1]), True, self )
 
         y = mm.bisect_interp(t, self.solnt, self.soln)
         
-        return ( y, False, self )
+        return (y, False, self)
 
     def launch( self, y0 = None, sm1 = None, t0 = None ) :
         '''Launch the stage.  The stage can be anywhere in space.  Can add a previous FlyingStage at this point.

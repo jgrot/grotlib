@@ -47,12 +47,10 @@ if __name__ == "__main__" :
     def falpha( t, y, flyer ) :
         m, r, th, vr, om = y
         vth = om/r
-        if r < (flyer.R+7.5E3) :
-            n = (1.0, 0.0)
-        elif vth == 0.0 :
-            n = (1.0, 0.0)
-        else :
-            v,n = mpm.v_and_dir(y)
+        #if r < (flyer.R+7.5E3) :
+        n = (1.0, 0.0)
+        #else :
+        #    v,n = mpm.v_and_dir(y)
         return n
     
     flyer = ksp.FlyingStage(s1, "Stage 1", "Kerbin", fthrottle, falpha)
