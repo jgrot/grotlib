@@ -1,0 +1,6 @@
+{ "nosecone name" : "Capsule with parachute",
+  "stage file"    : "TestLFE1.json",
+  "htarget"       : 8726.0,
+  "crash time"    : 99.0,
+  "throttle"      : 1.0
+}
