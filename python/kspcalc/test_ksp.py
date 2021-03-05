@@ -209,14 +209,27 @@ def TORBIT() :
     t1 = 0.25*o.tau
     t2 = 0.5*o.tau
     t3 = 0.75*o.tau
+    t4 = -1.25*o.tau
 
     phi1 = o.phi_at_t(t1)
     phi2 = o.phi_at_t(t2)
     phi3 = o.phi_at_t(t3)
+    phi4 = o.phi_at_t(t4)
     
+    print("  ...checking phi at 1/4 tau")
     if not cmp.fsame(phi1, 0.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 1/2 tau")
     if not cmp.fsame(phi2, math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 3/4 tau")
     if not cmp.fsame(phi3, 1.5*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at -1.25 tau")
+    if not cmp.fsame(phi4, -1.25*2.0*math.pi, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+
+    phi1 = -1.25*2.0*math.pi
+    t1_truth = -1.25*o.tau
+    t1 = o.t_at_phi(phi1)
+    print("  ...checking t at -1.25*2pi phi")
+    if not cmp.fsame(t1, t1_truth, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     # Test ellipse
     print("Checking elliptical orbit")
@@ -232,16 +245,30 @@ def TORBIT() :
     t1 = 0.25*o.tau
     t2 = 0.5*o.tau
     t3 = 0.75*o.tau
+    t4 = 4.0*o.tau
+    t5 = -4.0*o.tau
 
     phi1 = o.phi_at_t(t1)
     phi2 = o.phi_at_t(t2)
     phi3 = o.phi_at_t(t3)
+    phi4 = o.phi_at_t(t4)
+    phi5 = o.phi_at_t(t5)
 
     phi1_truth = 2.2431742381218593
     phi3_truth = 2.0*math.pi - phi1_truth
-    if not cmp.fsame(phi1, phi1_truth, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    phi4_truth = 8.0*math.pi
+    phi5_truth = -8.0*math.pi
+    print("  ...checking phi at 1/4 tau")
+    if not cmp.fsame(phi1, phi1_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 1/2 tau")
     if not cmp.fsame(phi2, math.pi, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 3/4 tau")
     if not cmp.fsame(phi3, phi3_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 4 tau")
+    if not cmp.fsame(phi4, phi4_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at -4 tau")
+    if not cmp.fsame(phi5, phi5_truth, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    
 
     # Test parabola
     print("Checking forced parabolic orbit (v_r ignored)")
@@ -263,9 +290,12 @@ def TORBIT() :
     phi2 = o.phi_at_t(t2)
     phi3 = o.phi_at_t(t3)
 
-    if not cmp.fsame(phi1, 0.0484306562739271, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi2, 0.46686597787401796, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi3, 1.9248853641334023, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 10 seconds")
+    if not cmp.fsame(phi1, 0.0484306562739271, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 100 seconds")
+    if not cmp.fsame(phi2, 0.46686597787401796, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 1000 seconds")
+    if not cmp.fsame(phi3, 1.9248853641334023, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     # Test hyperbola (Note, positive vr entry point)
     print("Checking hyperbolic orbit with insertion not at phi=0 (v_r > 0)")
@@ -285,9 +315,12 @@ def TORBIT() :
     phi2 = o.phi_at_t(t2)
     phi3 = o.phi_at_t(t3)
 
-    if not cmp.fsame(phi1, 0.09973240289205285, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi2, 0.8035063096303883, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
-    if not cmp.fsame(phi3, 1.5791723428116158, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 10 seconds")
+    if not cmp.fsame(phi1, 0.09973240289205285, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 100 seconds")
+    if not cmp.fsame(phi2, 0.8035063096303883, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
+    print("  ...checking phi at 1000 seconds")
+    if not cmp.fsame(phi3, 1.5791723428116158, tolfrac=1E-5, report_to=sys.stderr, report=cmp.CMP_ONLY_NOT_SAME) : exit(1)
 
     print("SUCCESS")
 

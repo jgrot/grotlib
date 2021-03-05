@@ -976,15 +976,11 @@ class Stage :
     def _processEngines(self) :
         '''(private) Preprocess engine data.'''
 
-        ## UNDER CONSTRUCTION ##
-
         # Here, we sort engine configurations by burn time.
 
         phases = []
 
         for eng_rec in self.engines :
-
-            print("DEBUG PROCESSING ", repr(eng_rec))
 
             added_engine = False
             
@@ -1004,8 +1000,6 @@ class Stage :
                 
                 prop_phase = PropulsionPhase()
                 prop_phase.add_engine(*eng_rec)
-                print("DEBUG CREATED NEW PROP PHASE")
-                print("DEBUG NEW PROP PHASE ENGINE SPECS ", repr(prop_phase.engine_specs))
 
                 phases.append(prop_phase)
 
@@ -1034,8 +1028,6 @@ class Stage :
                 if not added_tank :
 
                     raise Exception("Could not find a propulsion phase for fuel tank")
-
-        print("DEBUG NUMBER OF PHASES ", len(phases))
 
         # Sort phase by burn time
         phases_by_t = [(p.burn_time, p) for p in phases]
@@ -1103,9 +1095,6 @@ class Stage :
         self.me_kg = m0_kg - self.fmass_nodes[-1]
         # Stage mass nodes
         self.mass_nodes = [ self.me_kg + m for m in self.fmass_nodes ]
-
-        print("DEBUG LEN SELF.BURN_PHASES ", len(self.burn_phases))
-        print("DEBUG SELF.BURN_PHASES[0].ENGINE_SPECS ", repr(self.burn_phases[0][1].engine_specs))
         
     def dmdt( self, mstage_kg, throttle ) :
         '''Compute stage dm/dt vs firing phase (via stage mass) and throttle level

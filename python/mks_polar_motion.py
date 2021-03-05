@@ -295,7 +295,9 @@ class Orbit :
     ORB_HYPERBOLA = 3
     ORB_ORBITS = ( 'circle', 'ellipse', 'parabola', 'hyperbola' )
     
-    def __init__(self, y, GM, force=None) :
+    def __init__(self, y, GM, phi_resolution=5000.0, force=None) :
+
+        self.phi_resolution = phi_resolution
 
         # Note: th is ignored here, but used in OrientedOrbit
         m, r, th, vr, om = y
@@ -359,47 +361,17 @@ class Orbit :
             # Circle
             self.phi_i = 0.0
 
-        # PERIOD
+        # PERIOD OR PHI_MAX
+        
         if e < 1.0 :
+            
             x1 = 1.0/GM/GM
             x2 = math.pow(h,3.0)/math.pow((1.0 - e*e),1.5)
             self.tau = 2.0*math.pi*x1*x2
-
-        # Set up time integrator for phi.  Works for all orbits.
-            
-        A = h / math.pow(r0*(1.0 + e), 2.0)
-        def f(t, y) :
-            x1 = 1.0 + e*math.cos(y[0])
-            ans = A*x1*x1
-            return [ ans ]
-        solv = ode(f).set_integrator("vode", method="adams")
-
-        # t=0 -> phi=0
-        solv.set_initial_value(0.0, 0.0)
-
-        # Compute phi vs time with t=0 at phi=0 (r=r0)
-
-        self.phivt = [0.0]
-        self.solnt = [0.0]
-        
-        orbtype = self.classify()
-        if orbtype in [self.ORB_CIRCLE, self.ORB_ELLIPSE] :
-            
-            dt = self.tau / 1000.0
-            phi = 0.0
-            
-            while solv.successful() and phi < 2.0*math.pi :
-                phi = solv.integrate( solv.t + dt )
-
-                # print(repr(solv.t))
-                
-                self.phivt.append(phi[0])
-                self.solnt.append(solv.t)
-
             self.phi_max = math.inf
             self.phi_min = -math.inf
-                
-        elif orbtype in [self.ORB_HYPERBOLA, self.ORB_PARABOLA] :
+            
+        else :
 
             self.phi_max = math.acos(-1.0/self.e)
             self.phi_min = -self.phi_max
@@ -409,24 +381,106 @@ class Orbit :
             if self.phi_i < self.phi_min :
                 raise Exception("Logic Error:  phi_i < phi_min")
             
-            dt = 0.1
-            phi = 0.0
+        # Set up time integrator for phi.  Works for all orbits.
             
-            while solv.successful() and solv.t < 20000.0 :
-                
-                phi = solv.integrate( solv.t + dt )
+        A = h / math.pow(r0*(1.0 + e), 2.0)
+        def f(t, y) :
+            x1 = 1.0 + e*math.cos(y[0])
+            ans = A*x1*x1
+            return [ ans ]
+        self.solv = ode(f).set_integrator("vode", method="adams")
 
-                self.phivt.append(phi[0])
-                self.solnt.append(solv.t)
+        # t=0 -> phi=0
+        self.solv.set_initial_value(0.0, 0.0)
 
-            neg_t = [-t for t in self.solnt[1:]]
-            neg_t.reverse()
+        # Compute phi vs time with t=0 at phi=0 (r=r0)
 
-            neg_phi = [-phi for phi in self.phivt[1:]]
-            neg_phi.reverse()
+        self.path_phi = [0.0]
+        self.path_t = [0.0]
+        self.orbtype = self.classify()
+        
+    def _to_path_param(self, x_in, which) :
+        '''Converts t_in or phi_in to periodic path values -p/2 <= x <= p/2 where p is period 
 
-            self.solnt = neg_t + self.solnt
-            self.phivt = neg_phi + self.phivt 
+        :param float x_in: input t or phi
+        :param int which: 0=t 1=phi
+        '''
+
+        if self.e >= 1 :
+            raise Exception("Called for non-periodic orbit")
+
+        if which == 0 :
+            p = self.tau
+        else :
+            p = 2.0 * math.pi
+
+        # Only need to work out the math on the + side
+        x2 = abs(x_in)
+            
+        if x2 > p :
+            f,i = math.modf(x2/p)
+            x2 = f*p
+            
+        if x2 > 0.5*p :
+            x2 = x2 - p
+
+        # Now account for negative x_in
+        if x_in < 0 :
+            x2 = -x2
+
+        return x2
+            
+    def _propagate_t_phi(self, to, which) :
+        '''Extends the phi vs t arrays out to "to"
+
+        - Does not take into account the type of orbit, only
+          propagates.  It is up to other code to manage periodicity.
+
+        - Appends to head and tail of path_t and path_phi
+
+        :param float to: value to extend to
+        :param int which: 0=t, 1=phi
+
+        '''
+
+        # Only need to deal with the + side of things
+        to = abs(to)
+
+        # Check if there is anything to do
+        if which == 0 : # t
+            if to < self.path_t[-1] : return
+        else :
+            if to < self.path_phi[-1] : return
+                        
+        # Extend
+
+        if which == 0 :
+            to_last = self.path_t[-1]
+        else :
+            to_last = self.path_phi[-1]
+
+        # phi resolution = 2pi / self.phi_resolution
+        while self.solv.successful() and to_last < to :
+            
+            phi_last = self.path_phi[-1]
+            m, r, phi, vr, om = self.y_at_phi(phi_last)
+
+            dt = 2.0 * math.pi / float(self.phi_resolution) / om
+
+            next_t   = self.solv.t + dt
+            next_phi = self.solv.integrate(next_t)[0]
+
+            # print("DEBUG DT, NEXT_T, NEXT_PHI, OM", dt, next_t, next_phi, om)
+            
+            self.path_t.append(next_t)
+            self.path_phi.append(next_phi)
+            self.path_t.insert(0, -next_t)
+            self.path_phi.insert(0, -next_phi)
+
+            if which == 0 :
+                to_last = next_t
+            else :
+                to_last = next_phi
 
     def classify( self ) :
         if self.e < 0 :
@@ -522,19 +576,69 @@ class Orbit :
             # Look for the opposite type of extremum
             sign *= -1.0
 
-    def phi_at_t(self, t) :
-        '''(UNDER CONSTRUCTION) Returns orbit angle at specified time
+    def phi_at_t(self, t, phi_range=2) :
+        '''Returns orbit angle at specified time
 
-        :param float t: time from {currently: insertion point for e<1, r0 for e>=1} 
+        :param float t: time from phi=0, r=r0
+        :param int phi_range: For periodic motion, else ignored.  See notes.
 
-        :Todo:
+        :Notes:
 
-        - Negative t?
-        - Modulo t for circle and ellipse
-        - For parabola and hyperbola, propagate like ksp.FlyingStage where the time series is interpolated and extended as needed
+        phi_range for periodic motion:
 
+          - 0 -> -pi to pi
+          - 1 -> 0 to 2pi
+          - 2 -> -inf to inf
         '''
-        return mm.bisect_interp(t, self.solnt, self.phivt)
+
+        # Keep it simple; if t=0, then phi=0
+        if t == 0.0 :
+            return 0.0
+
+        if self.e < 1.0 : # closed orbit
+            t2 = self._to_path_param(t, which=0) # which=0 -> adjust time
+        else :
+            t2 = t
+
+        self._propagate_t_phi(t2, which=0) # which=0 -> propagate time
+        
+        phi_out = mm.bisect_interp(t2, self.path_t, self.path_phi)
+
+        if self.e >= 1.0 :
+            # For open orbits, just return phi
+            return phi_out
+
+        #
+        # Periodic orbit
+        #
+        
+        if phi_range == 0 :
+            return phi_out
+
+        # phi_range is 1 or 2
+
+        # Solve things on the plus side.  So if t < 0, solve with phi = -phi and then negate at the end.
+
+        sign = 1.0 if t >= 0.0 else -1.0
+        
+        phi_out = sign*phi_out
+        
+        if phi_out < 0 :
+            phi_out += 2.0*math.pi
+
+        if phi_range == 1 :
+            return sign*phi_out
+
+        # phi_range is 2
+
+        # How many time periods out are we (stored in i)?
+        f,i = math.modf(sign*t/self.tau)
+
+        # Add that number of phi periods
+        phi_out += 2.0*math.pi*i
+
+        return sign*phi_out
+    
     
     def r0_dv_to_e(self, e) :
         '''Computes *signed* delta V to change eccentricity at r0
@@ -583,12 +687,65 @@ class Orbit :
 
         return (R, PHI)
 
-    def t_at_phi(self, phi) :
-        '''(UNDER CONSTRUCTION)
-        MIGHT HAVE TO ENFORCE -PI to PI range on phi
-        '''
-        return mm.bisect_interp(phi, self.phivt, self.solnt)
+    def t_at_phi(self, phi, t_range=2) :
+        '''Returns orbit t at specified angle.
 
+        :param float phi: orbit angle
+        :param int t_range: For periodic motion, else ignored.  See notes.
+
+        :Notes:
+
+        t_range for periodic motion:
+
+          - 0 -> -tau/2 to tau/2
+          - 1 -> 0 to tau
+          - 2 -> -inf to inf
+        '''
+        
+        if self.e < 1.0 : # closed orbit
+            phi2 = self._to_path_param(phi, which=1) # which=1 -> adjust phi
+        else :
+            phi2 = phi
+
+        self._propagate_t_phi(phi2, which=1) # which=1 -> propagate phi
+        
+        t_out = mm.bisect_interp(phi2, self.path_phi, self.path_t)
+
+        if self.e >= 1.0 :
+            return t_out
+        
+        #
+        # Periodic orbit
+        #
+
+        if t_range == 0 :
+            return t_out
+
+        # t_range is 1 or 2
+        
+        # Solve things on the plus side.  So if phi < 0, solve with t = -t and then negate at the end.
+
+        sign = 1.0 if phi >= 0.0 else -1.0
+        
+        t_out = sign*t_out
+        
+        if t_out < 0 :
+            t_out += self.tau
+            
+        if t_range == 1 :
+            return sign*t_out
+
+        # t_range is 2
+
+        # How many phi periods out are we (stored in i)?
+        f,i = math.modf(0.5*sign*phi/math.pi)
+
+        # Add that number of phi periods
+        t_out += self.tau*i
+
+        return sign*t_out
+
+        
     def y_at_phi(self, phi) :
         '''Returns a polar motion state vector.
         '''
@@ -649,9 +806,9 @@ class OrientedOrbit(Orbit) :
 
     '''
     
-    def __init__(self, y, GM) :
+    def __init__(self, y, GM, phi_resolution=5000.0, force=None) :
         
-        super().__init__(y, GM)
+        super().__init__(y, GM, phi_resolution, force)
 
         m, r, th_i, vr, om = y
 
