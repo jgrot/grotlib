@@ -24,10 +24,12 @@ import math
 from scipy.optimize import minimize
 
 import ksp
-from ksp import DragDivergence
 
 def falpha( t, y, flyer ) :
-    return 0.5 * math.pi
+    return (1.0, 0.0)
+
+def fthrottle( t, y ) :
+    return 1.0
 
 instructions = [
     "Drag Divergence Optimizer",
@@ -66,9 +68,6 @@ if __name__ == "__main__" :
         with open( args.case_file, "rt" ) as f :
             case_data = json.load( f )
 
-        def fthrottle( t, y ) :
-            return case_data["throttle"]
-
         stage = ksp.Stage( )
         stage.loadJSON( ksp.pthdat("drag_tests/" + case_data["stage file"]) )
         flyer = ksp.FlyingStage( stage, "stage", "Kerbin", fthrottle, falpha )
@@ -88,7 +87,7 @@ if __name__ == "__main__" :
                X[2] > 100.0 :
                return math.inf
             
-            ksp.dd = DragDivergence(X[0], X[1], X[2])
+            ksp.dd = ksp.DragDivergence(X[0], X[1], X[2])
             
             flyer.launch( )
             try :
@@ -114,6 +113,6 @@ if __name__ == "__main__" :
         print(result.x)
     
     fig, ax = plt.subplots()
-    dd = DragDivergence( *result.x )
+    dd = ksp.DragDivergence( *result.x )
     dd.plot( ax, [(0,4)], resolution=[1000] )
     plt.show()
