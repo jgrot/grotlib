@@ -1,0 +1,5 @@
+{ "nosecone name" : "Mk5A",
+  "stage file"    : "Mk5A_slow_stage.json",
+  "htarget"       : 1817.0,
+  "crash time"    : 42.0
+}
