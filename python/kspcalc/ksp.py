@@ -621,8 +621,9 @@ class DragDivergence(mm.Functor) :
             
             # optim_dd.py experiments to determine parameters:
             #
-            experiments = [ ["ancA", 2.82551746, 9.54428153, 0.77963552],
-                            ["anc",  2.84071867, 9.55284246, 0.77831561] ]
+            experiments = [ ["ancA", 2.82551746,  9.54428153, 0.77963552],
+                            ["anc",  2.84071867,  9.55284246, 0.77831561],
+                            ["Mk5A", 2.71342946, 10.38393587, 0.83268328]]
             nexp = float(len(experiments))
 
             C = [0.0, 0.0, 0.0]
