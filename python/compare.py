@@ -27,7 +27,7 @@ CMP_ONLY_NOT_SAME = 1
 CMP_ONLY_SAME = 2
 CMP_BOTH = 3
 
-def compare_datasets(data, reference) :
+def compare_datasets(data, reference, tolfrac=1E-15) :
     '''Compares two lists of lists.
     '''
     for irow, row in enumerate( data ) :
@@ -42,7 +42,7 @@ def compare_datasets(data, reference) :
                 
         for jelem, elem in enumerate( row ) :
             elem_ref = row_ref[ jelem ]
-            if not fsame(elem, elem_ref, report_to = sys.stderr, report = CMP_ONLY_NOT_SAME) : exit(1)
+            if not fsame(elem, elem_ref, tolfrac=tolfrac, report_to=sys.stderr, report=CMP_ONLY_NOT_SAME) : exit(1)
 
 
 def fsame(a, b, tolfrac=1E-15, report_to=sys.stderr, report=CMP_BOTH) :

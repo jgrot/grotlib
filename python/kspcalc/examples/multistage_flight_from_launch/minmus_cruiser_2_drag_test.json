@@ -1,0 +1,5 @@
+{ "nosecone name" : "Minmus Cruiser 2 Stage 1",
+  "stage file"    : "minmus_cruiser_2_s1.json",
+  "htarget"       : 226862.0,
+  "crash time"    : 99.0
+}

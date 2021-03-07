@@ -28,13 +28,17 @@ import ksp
 def fthrustdir( t, y, flyer ) :
     return (1.0, 0.0)
 
+def fthrottle( t, y ) :
+    return 1.0
+
 instructions = [
     "Drag Term Finder",
     "Create a missile to test.",
     "Fly the missile straight up and let it burn all the fuel.",
     "Record the maximum altitude and the crash time in TALO seconds.",
     "Create an input record (nosecone_test.json)",
-    "Run the test subcommand to find the drag term by minmizing the error in target altitude and crash time."
+    "Run the test subcommand to find the drag term by minmizing the error in target altitude and crash time.",
+    "See the sphinx documentation for more details."
 ]
 
 if __name__ == "__main__" :
@@ -49,6 +53,7 @@ if __name__ == "__main__" :
 
     cmd_test = subparsers.add_parser("test", help="Run the test")
     cmd_test.add_argument("case_file", help="Name of the case file")
+    cmd_test.add_argument("--nodd", default=False, action="store_true", help="Disable drag divergence")
 
     args = parser.parse_args()
     
@@ -59,13 +64,14 @@ if __name__ == "__main__" :
 
     if args.command == "test" :
 
+        if args.nodd :
+            # Put transition at Mach 100 effectively turning this off.
+            ksp.dd = ksp.DragDivergence(3.0, 10.0, 100.0)
+        
         case_data = None
         with open( args.case_file, "rt" ) as f :
             case_data = json.load( f )
 
-        def fthrottle( t, y ) :
-            return case_data["throttle"]
-            
         stage = ksp.Stage( )
         try :
             stage.loadJSON(case_data["stage file"])
@@ -76,17 +82,20 @@ if __name__ == "__main__" :
 
         htarget = case_data["htarget"]
         crash_time = case_data["crash time"]
-
         
         itrial = 1
         def trial( X ) :
-
             
             global itrial
+
+            if X[0] < 1E-3 :
+                return math.inf
             
             stage.dragco = X[0]
-            flyer.launch( )
+            # flyer.launch([flyer.stage.me_kg, flyer.R + htarget, 0.0, 0.0, flyer.body_omega])
+            flyer.launch()
             flyer.flyTo(30000)
+            # flyer.dumpTraj()
             
             hmax = flyer.maxr - flyer.R
 
@@ -96,10 +105,10 @@ if __name__ == "__main__" :
             print( "iter: %4i, drag term: %10.8f, herr: %10.4e, terr: %10.2f" % (itrial, X[0], z1, z2) )
             itrial += 1
             
-            return ( z1*z1 + z2*z2 )
+            return (z1*z1 + z2*z2)
 
         # Initial drag term
-        x0 = [0.1]
+        x0 = [10.0]
         
         result = minimize(trial, x0, method="Nelder-Mead", options={"maxiter":1000})
 

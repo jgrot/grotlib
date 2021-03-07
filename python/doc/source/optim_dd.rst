@@ -1,9 +1,11 @@
 Drag Divergence Optimizer
 =========================
 
-This optimizer is a start on trying to tease out the exact drag
-divergence model that KSP is using.  I suppose I could just Google it,
-but doing it experimentally is more fun.
+Optimizing drag divergence is really only a thing while this library
+is in development.  Once it is know, then there will likely not be a
+need for this.  This optimizer is a start on trying to tease out the
+exact drag divergence model that KSP is using.  I suppose I could just
+Google it, but doing it experimentally is more fun.
 
 Command Line Interface (CLI)
 ----------------------------
@@ -60,43 +62,35 @@ the slow speed drag modifier (i.e. don't modify).
 
 To find the c-terms, obtain the slow speed drag term (see
 :doc:`drag_finder`).  Then run an experiment the same way as in
-:doc:`drag_finder` but fast and high.  You will probably just go with
-the default fuel amount and full throttle.  Here are example files
-and commands:
+:doc:`drag_finder` but fast and high without damaging the craft.  You
+will probably just go with the default fuel amount and full throttle.
+Here are example files and commands:
 
 ancAfast_test.json::
   
   { "nosecone name" : "Aerodynamic Nose Cone - Type A",
     "stage file"    : "ancAfast_stage.json",
     "htarget"       : 15298,
-    "crash time"    : 140,
-    "throttle"      : 1.0
+    "crash time"    : 140
   }
 
 ancAfast_stage.json::
   
-  {"m0": [4.096, "t"], "elist": [[1, "RT-10"]], "dragco": 0.45102539 }
+  {"m0": [4.096, "t"], "elist": [["RT-10", 1, 100, null]], "dragco": 0.51993179}
 
 Test run::
 
   $ optim_dd.py test ancAfast_test.json
 
-  iter:    1, c0:     3.0000, c1:    10.0000, c2:     0.7000, herr: -7.4083e+02, terr:      -6.20
-  iter:    2, c0:     3.1500, c1:    10.0000, c2:     0.7000, herr: -1.0292e+03, terr:      -7.50
-  iter:    3, c0:     3.0000, c1:    10.5000, c2:     0.7000, herr: -7.7052e+02, terr:      -6.40
-  iter:    4, c0:     3.0000, c1:    10.0000, c2:     0.7350, herr: 1.4534e+01, terr:      -3.00
-  iter:    5, c0:     2.8500, c1:    10.3333, c2:     0.7233, herr: 3.6100e+01, terr:      -2.90
-  iter:    6, c0:     2.9000, c1:     9.7222, c2:     0.7389, herr: 3.2456e+02, terr:      -1.60
-
-  ...
-
-  iter:  172, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: 3.5064e-02, terr:      -3.00
-  iter:  173, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: -2.7270e-02, terr:      -3.00
-  iter:  174, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: 2.7893e-02, terr:      -3.00
-  iter:  175, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: 1.7895e-02, terr:      -3.00
-  iter:  176, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: -7.0845e-03, terr:      -3.00
-  iter:  177, c0:     3.0113, c1:     9.9276, c2:     0.7351, herr: -1.9827e-03, terr:      -3.00
-  [3.01128474 9.92764216 0.73508828]
+  ... lots of output ...
+  
+  iter:  222, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: 2.9087e-02, terr:      -0.90
+  iter:  223, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: -3.2164e-03, terr:      -0.90
+  iter:  224, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: -3.7052e-02, terr:      -0.90
+  iter:  225, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: 8.6594e-03, terr:      -0.90
+  iter:  226, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: -1.2966e-02, terr:      -0.90
+  iter:  227, c0:     2.8255, c1:     9.5443, c2:     0.7796, herr: -9.7618e-03, terr:      -0.90
+  [2.82551746 9.54428153 0.77963552]
 
 At the end of the run, you get a plot of the drag divergence vs Mach number:
 
@@ -104,3 +98,11 @@ At the end of the run, you get a plot of the drag divergence vs Mach number:
    :align: center
    :width: 400
    :alt: drag divergence plot
+
+Once you are confident you have a good set of coefficients, add them to the experimental results in the DragDivergence class!::
+  
+  # optim_dd.py experiments to determine parameters:
+  #
+  experiments = [ ["ancA", 2.82551746, 9.54428153, 0.77963552],
+                  ["anc",  2.84071867, 9.55284246, 0.77831561] ]
+

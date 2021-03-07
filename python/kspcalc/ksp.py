@@ -605,27 +605,42 @@ class DragDivergence(mm.Functor) :
     :Todo: cite references on tanh form.
     '''
 
-    def __init__(self, c0=3.0, c1=10.0, c2=0.71) :
+    def __init__(self, c0=None, c1=None, c2=None) :
         rangemin = [0.0]
         rangemax = [20.0]
         
         super().__init__(rangemin, rangemax)
 
-        # Formula parameters
-        self.c0 = c0 # Currently, like amplitude
-        self.c1 = c1 # Currently, like sharpness
-        self.c2 = c2 # Currently, like divergence Mach number
+        if c0 is not None :
+        
+            self.c0 = c0
+            self.c1 = c1
+            self.c2 = c2
+            
+        else :
+            
+            # optim_dd.py experiments to determine parameters:
+            #
+            experiments = [ ["ancA", 2.82551746, 9.54428153, 0.77963552],
+                            ["anc",  2.84071867, 9.55284246, 0.77831561] ]
+            nexp = float(len(experiments))
 
+            C = [0.0, 0.0, 0.0]
+            for experiment in experiments :
+                Cex = experiment[1:]
+                C = [C[i] + Cex[i] for i in range(3)]
+            C = [c/nexp for c in C]
+
+            # Formula parameters
+            self.c0 = C[0] # Currently, like amplitude
+            self.c1 = C[1] # Currently, like sharpness
+            self.c2 = C[2] # Currently, like divergence Mach number
+            
     def call( self, *X ) :
         self.checkRange( X )
 
         M = X[0]
 
-        # optim_dd.py experiments to determine parameters:
-        #
-        # 3.20540819 10.11003808  0.64473092 chj3
-        # 3.01128474  9.92764216  0.73508828 ancA
-        # 2.85659979  9.48884985  0.77361743 anc
         y = 1.0 + self.c0*0.5*(1.0 + math.tanh( self.c1*(M - self.c2) ))
 
         # print("C0 = %s C1 = %s C2 = %s M = %s DD = %s" % (self.c0, self.c1, self.c2, M, y))
@@ -841,7 +856,7 @@ class PropulsionPhase :
         '''
 
         if self.type is not None :
-            print("Only one model of SRM is allowed at this time")
+            # print("Only one model of SRM is allowed at this time")
             return False
 
         self.type = "s"
@@ -1096,11 +1111,13 @@ class Stage :
         # Stage mass nodes
         self.mass_nodes = [ self.me_kg + m for m in self.fmass_nodes ]
         
-    def dmdt( self, mstage_kg, throttle ) :
-        '''Compute stage dm/dt vs firing phase (via stage mass) and throttle level
+    def dmdt_or_thrust(self, mstage_kg, throttle, p_Pa=None) :
+        '''Compute stage dm/dt OR thrust (if p_Pa is not none) vs firing phase
+        (via stage mass) and throttle level
 
         :param float mstage_kg: mass of stage in kg
         :param float throttle: 0 - 1
+        :param float p_Pa: ambient pressure in Pascals, or None to get dmdt
         '''
 
         # This might happen with roundoff error or solver overshoot.
@@ -1109,17 +1126,30 @@ class Stage :
         
         mfuel_kg = mstage_kg - self.me_kg
 
+        if p_Pa is not None :
+            is_thrust = True
+            vac = (C_p0 - p_Pa) / C_p0
+        else :
+            is_thrust = False
+        
         # Find largest left-bracketing record
         for i in reversed(range(len(self.rate_edges))) :
             if mfuel_kg >= self.fmass_nodes[i] :
                 rec = self.rate_edges[i]
                 break
-            
-        rate_kgps_sum = 0.0
-        for rate_kgps, isl, iva in rec : # rate, Isp-ASL, Isp-Vac
-            rate_kgps_sum += throttle * rate_kgps
 
-        return -rate_kgps_sum
+        out_sum = 0.0
+        # rate_kgps_sum = 0.0
+        for rate_kgps, isl, iva in rec : # rate, Isp-ASL, Isp-Vac
+            if is_thrust :
+                out_sum += throttle*rate_kgps*((1.0-vac)*isl + vac*iva)
+            else :
+                out_sum += throttle*rate_kgps
+
+        if not is_thrust :
+            out_sum = -out_sum # dmdt
+            
+        return out_sum
 
     def dumpInfo( self ) :
 
@@ -1247,35 +1277,7 @@ class Stage :
         # Regenerate table if necessary
         self._dv_v_m(p_Pa)
         
-        return mm.bisect_interp(dv_stage, self.dv_nodes, self.mass_nodes)
-            
-    def thrust( self, mstage_kg, throttle, p_Pa ) :
-        '''Thrust of stage given firing phase (via stage mass), throttle, and ambient pressure.
-
-        :param float mstage_kg: Stage mass in kg
-        :param float throttle: 0 - 1
-        :param float p_Pa: ambient pressure in Pascals
-        '''
-        
-        if mstage_kg < self.me_kg :
-            return 0.0
-
-        vac = (C_p0 - p_Pa) / C_p0
-        
-        mfuel_kg = mstage_kg - self.me_kg
-
-        # Find largest left-bracketing record
-        for i in reversed(range(len(self.rate_edges))) :
-            if mfuel_kg >= self.fmass_nodes[i] :
-                rec = self.rate_edges[i]
-                break
-        
-        thrust = 0.0
-        for rate_kgps, isl, iva in rec : # rate, Isp-ASL Isp-Vac
-            thrust += throttle * rate_kgps * ((1.0-vac)*isl + vac*iva)
-                
-        return thrust
-    
+        return mm.bisect_interp(dv_stage, self.dv_nodes, self.mass_nodes)    
 
 class FlyingStage :
     '''A Stage in the context of a body which provides functions needed for plane-polar trajectory.
@@ -1326,6 +1328,8 @@ class FlyingStage :
         
         v = math.sqrt(vr*vr + vthb*vthb)
         M = v/self.fsnd.call(alt)[0]
+
+        # print("DEBUG M %f THRUST %f DMDT %f" % (m, self._thrust(t,y), self._dmdt(t,y) ))
         
         return ( ( self._thrust(t, y) * self.fthrustdir(t, y, self)[0] / m )
                  - self.GM/(r*r) - self.stage.dragco * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
@@ -1359,7 +1363,8 @@ class FlyingStage :
         '''
         
         m, r, th, vr, om = y
-        return self.stage.dmdt( m, self.fthrottle(t, y) )
+        # Calling with no pressure term means compute dmdt
+        return self.stage.dmdt_or_thrust(m, self.fthrottle(t, y))
 
     def _thrust( self, t, y ) :
         '''(private) Compute thrust at a trajectory point
@@ -1371,7 +1376,7 @@ class FlyingStage :
         m, r, th, vr, om = y
         alt = r - self.R
         p = self.fpress.call( alt )[0]
-        return self.stage.thrust( m, self.fthrottle(t, y), p )
+        return self.stage.dmdt_or_thrust( m, self.fthrottle(t, y), p )
 
     def dumpTraj( self, t0 = None, t1 = None, dt = 5.0 ) :
         '''Dump trajectory information.  Calls flyTo() and so takes into account the entire craft.

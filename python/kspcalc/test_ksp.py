@@ -66,7 +66,7 @@ def T2DS1ME() :
     else :
         with open( tfile, 'rb' ) as f :
             soln_compare = pickle.load( f )
-            cmp.compare_datasets( flyer.soln, soln_compare )      
+            cmp.compare_datasets(flyer.soln, soln_compare)
         print("SUCCESS")
 
     if True :
