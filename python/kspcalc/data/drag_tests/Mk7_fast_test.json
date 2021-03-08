@@ -1,0 +1,5 @@
+{ "nosecone name" : "Mk7",
+  "stage file"    : "Mk7_fast_stage.json",
+  "htarget"       : 11529.0,
+  "crash time"    : 140.0
+}
