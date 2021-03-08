@@ -1,0 +1,5 @@
+{ "nosecone name" : "KV-3",
+  "stage file"    : "KV-3_slow_stage.json",
+  "htarget"       : 3748,
+  "crash time"    : 68.0
+}
