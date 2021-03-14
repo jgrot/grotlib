@@ -99,10 +99,4 @@ At the end of the run, you get a plot of the drag divergence vs Mach number:
    :width: 400
    :alt: drag divergence plot
 
-Once you are confident you have a good set of coefficients, add them to the experimental results in the DragDivergence class!::
-  
-  # optim_dd.py experiments to determine parameters:
-  #
-  experiments = [ ["ancA", 2.82551746, 9.54428153, 0.77963552],
-                  ["anc",  2.84071867, 9.55284246, 0.77831561] ]
-
+Once you are confident you have a good set of coefficients, add them to the associated part in ``drag_db``.

@@ -236,6 +236,34 @@ tanks_db = {
     }
 }
 
+drag_db = {
+    "ANC" : {
+        "name" : "Aerodynamic Nose Cone",
+        "drag" : 0.51047516,
+        "dd_terms" : (2.84071867,  9.55284246, 0.77831561)
+    },
+    "ANC-A" : {
+        "name" : "Aerodynamic Nose Cone Type A",
+        "drag" : 0.51993179,
+        "dd_terms" : (2.82551746,  9.54428153, 0.77963552)
+    },
+    "Mk5A" : {
+        "name" : "",
+        "drag" : 0.80194092,
+        "dd_terms" : (2.71342946, 10.38393587, 0.83268328)
+    },
+    "KV-3" : {
+        "name" : "'Pomegranate' Reentry Module",
+        "drag" : 1.27636719,
+        "dd_terms" : (3.16721787,  9.75074905, 0.67653654)
+    },
+    "Mk7" : {
+        "name" : "Protective Rocket Nose Cone Mk7",
+        "drag" : 1.10253906,
+        "dd_terms" : (2.66280059, 10.467076,   0.83946844)
+    }
+}
+
 def augmentBodyDbs() :
     '''Looks for dictionary (JSON) files named <Body Key>.json and adds data to the bodies_db dictionary'''
     
@@ -618,20 +646,18 @@ class DragDivergence(mm.Functor) :
             self.c2 = c2
             
         else :
+
+            # Collect all the drag divergence data
+            experiments = []
+            for part in drag_db :
+                record = drag_db[part]
+                if "dd_terms" in record :
+                    experiments.append(record["dd_terms"])
             
-            # optim_dd.py experiments to determine parameters:
-            #
-            experiments = [ ["ancA", 2.82551746,  9.54428153, 0.77963552],
-                            ["anc",  2.84071867,  9.55284246, 0.77831561],
-                            ["Mk5A", 2.71342946, 10.38393587, 0.83268328],
-                            ["KV-3", 3.16721787,  9.75074905, 0.67653654],
-                            ["Mk7",  2.66280059, 10.467076,   0.83946844],
-                          ]
             nexp = float(len(experiments))
 
             C = [0.0, 0.0, 0.0]
-            for experiment in experiments :
-                Cex = experiment[1:]
+            for Cex in experiments :
                 C = [C[i] + Cex[i] for i in range(3)]
             C = [c/nexp for c in C]
 
@@ -711,6 +737,7 @@ class PropulsionPhase :
             max_ox *= uconv(mass_db, u, "kg") # kg
 
             if fuel_level is not None :
+                
                 liq_level, u = fuel_level
                 liq_level *= uconv(mass_db, u, "kg")
 
@@ -934,14 +961,27 @@ class Stage :
     '''Model of an isolated stage.
 
     :param tuple m0: (<mass value>,'<mass unit>') mass of stage with engines completely full.  If None, assumes init via loadJSON().
-    :param list engines: [(N1, "Name of engine 1", thrust_limiter(>0-100), alt_fuel_lev | None), ...]
-    :param float dragco: currently lumped term of 1/2*Cd*A
+    :param list engines: [("Name of engine 1", <count of engine 1>, thrust_limiter(>0-100), (<alternate fuel level>,"<units>") | None), ...]
+    :param list tanks: [("Name of tank 1", <count of tank 1>, (<alternate fuel level>,"<units>")* | None)]
+    :param list drags: [("Name of drag-adding part", <count of part>)] | None **
+    :param float dragco: currently lumped term of 1/2*Cd*A **
+
+
+    :Notes:
+    
+    \* The alternate fuel level for fuel/ox tanks is the sum of fuel
+    and ox, and the ratio is assumed to be ``ksp.f_to_o_eng``. See
+    also ``PropulsionPhase._compute_parameters()``.
+
+    \*\* If ``drags`` is set, then ``dragco`` is ignored.
+
     '''
     
-    def __init__(self, m0 = None, engines = [], tanks = [], dragco = 0.0) :
+    def __init__(self, m0=None, engines=[], tanks=[], drags=None, dragco=0.0) :
         self.m0 = m0
         self.engines = engines
         self.tanks = tanks
+        self.drags = drags
         self.dragco = dragco
 
         # Function cacheing
@@ -956,6 +996,7 @@ class Stage :
         Call this function when top level input params change.
         '''
         self._processEngines()
+        self._processDrags()
 
     def _dv_v_m(self, p_Pa) :
         '''Generates a DV node for each node in self.mass_nodes
@@ -992,6 +1033,20 @@ class Stage :
             
             self.dv_nodes.append(dv_phase + self.dv_nodes[imass-1])
         
+    def _processDrags(self) :
+
+        self.total_drag = 0.0
+        
+        if self.drags is None :
+            self.total_drag = self.dragco
+            return
+
+        for drag in self.drags :
+            drag_part, ndrags = drag
+            drag_rec = drag_db[drag_part]
+            drag = drag_rec["drag"]
+            self.total_drag += ndrags*drag
+
     def _processEngines(self) :
         '''(private) Preprocess engine data.'''
 
@@ -1159,7 +1214,7 @@ class Stage :
 
         tabrows = [ ["Initial mass (kg)", self.m0_kg],
                     ["Empty mass (kg)", self.me_kg],
-                    ["Drag term", self.dragco]
+                    ["Total drag", self.total_drag]
                    ]
         print("\n###")
         print("### STAGE INFO")
@@ -1229,6 +1284,7 @@ class Stage :
         
         data = { "m0" : self.m0,
                  "elist" : self.engines,
+                 "drags" : self.drags,
                  "dragco" : self.dragco
                  }
         
@@ -1265,6 +1321,7 @@ class Stage :
                 self.tanks = data["tanks"]
             except :
                 self.tanks = None
+            self.drags = data["drags"]
             self.dragco = data["dragco"]
             self._assimilate( )        
 
@@ -1336,7 +1393,7 @@ class FlyingStage :
         # print("DEBUG M %f THRUST %f DMDT %f" % (m, self._thrust(t,y), self._dmdt(t,y) ))
         
         return ( ( self._thrust(t, y) * self.fthrustdir(t, y, self)[0] / m )
-                 - self.GM/(r*r) - self.stage.dragco * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
+                 - self.GM/(r*r) - self.stage.total_drag * dd.call(M)[0] * abs(vr) * vr * self.fdens.call(alt)[0]/m )
 
     def _a_th( self, t, y ) :
         '''(private) Compute polar component of acceleration
@@ -1357,7 +1414,7 @@ class FlyingStage :
         vth = r*om
         alt = r - self.R
         return ( ( self._thrust(t, y) * self.fthrustdir(t, y, self)[1] / m )
-                 - self.stage.dragco * dd.call(M)[0] * abs(vthb) * vthb * self.fdens.call(alt)[0]/m )
+                 - self.stage.total_drag * dd.call(M)[0] * abs(vthb) * vthb * self.fdens.call(alt)[0]/m )
     
     def _dmdt( self, t, y ) :
         '''(private) Compute dmdt
