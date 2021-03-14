@@ -63,7 +63,7 @@ def bisect_interp(t, tseries, yseries) :
         msg = "Input parameter %s out of range: (%s, %s)" % (t, tseries[0], tseries[-1])
         raise Exception(msg)
     
-    i = (bisect.bisect( tseries, t ) - 1)
+    i = (bisect.bisect(tseries, t) - 1)
     if i == len(tseries)-1 :
         return yseries[-1]
     t0 = tseries[i]

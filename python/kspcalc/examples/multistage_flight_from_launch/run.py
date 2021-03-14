@@ -38,7 +38,7 @@ if __name__ == "__main__" :
     plot_opts = []
 
     s1 = ksp.Stage()
-    s1.loadJSON("minmus_cruiser_2_s1.json")
+    s1.loadJSON("minmus_express_2_s1.json")
     s1.dumpInfo()
 
     def fthrottle( t, y ) :
