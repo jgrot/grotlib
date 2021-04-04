@@ -1,0 +1,5 @@
+{"m0": [79.013, "t"],
+ "elist": [["RE-M3", 1, 100, null]],
+ "tanks": [["RJ-64", 1, null], ["FL-A215", 1, null], ["FL-A151L", 1, null]],
+ "drags": [["KV-3",1], ["ANC",4]],
+ "dragco": null}

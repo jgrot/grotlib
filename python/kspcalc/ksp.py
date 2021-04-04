@@ -47,7 +47,6 @@ if ( sys.version_info.major < 3 and sys.version_info.minor < 8 ) :
 ## PROJECT PATHS
 ##
 
-
 KSPCALCDIR = os.path.dirname(os.path.realpath(__file__))
 KSPDBDIR = os.path.join( KSPCALCDIR, "data/databases" )
 KSPEXAMPLESDIR = os.path.join( KSPCALCDIR, "data/examples" )
@@ -190,6 +189,15 @@ engine_db = {
         "ispsl"  : (205.0, "s"),
         "ispvac" : (230.0, "s")
     },
+    "RE-M3" : {
+        "model"  : "RE-M3",
+        "name"   : "Mainsail",
+        "type"   : "l",
+        "rate"   : ((44.407, "lu"),(54.275,"lu")),
+        "amount" : ((0.0, "lu"),(0.0, "lu")),
+        "ispsl"  : (285.0, "s"),
+        "ispvac" : (310.0, "s")
+    },
     "RT-5" : {
         "model"  : "RT-5",
         "name"   : "Flea",
@@ -233,7 +241,22 @@ tanks_db = {
         "model" : "FL-T400",
         "name"  : "FL-T400 Fuel Tank",
         "amount": ((180.0, "lu"),(220.0, "lu")) # (fuel, ox)
-    }
+    },
+    "RJ-64" : {
+        "model" : "RJ-64",
+        "name"  : "Rockomax Jumbo-64 Fuel Tank",
+        "amount": ((2880.0, "lu"),(3520.0, "lu"))
+    },
+    "FL-A215" : {
+        "model" : "FL-A215",
+        "name"  : "FL-A215 Fuel Tank Adapter",
+        "amount": ((540.0, "lu"),(660.0, "lu"))
+    },
+    "FL-A151L": {
+        "model" : "FL-A151L",
+        "name"  : "FL-A151L Fuel Tank Adapter",
+        "amount": ((270.0, "lu"),(330.0, "lu"))
+    },
 }
 
 drag_db = {
@@ -802,9 +825,27 @@ class PropulsionPhase :
 
                 mfuel = neng*liq_frac*max_fuel
                 mox   = neng*liq_frac*max_ox
-                            
-                fo = mfuel_sum / mox_sum
-                if not cmp.fsame(fo, f_to_o_eng, report_to=None) :
+
+                if mox > 0.0 :
+                    fo = mfuel / mox
+                else :
+                    if mfuel != 0.0 :
+                        raise Exception('Zero mox but non-zero mfuel for engine %s' % engine_model)
+                    else :
+                        fo = f_to_o_eng
+                
+                if not cmp.fsame(fo, f_to_o_eng, tolfrac=1E-4, report_to=None) :
+
+                    sys.stderr.write("Error: M oxidizer is zero\n")
+                    sys.stderr.write("     : Engine model: %s\n" % engine_model)
+                    sys.stderr.write("     : Number of engines specified: %i\n" % neng)
+                    sys.stderr.write("     : Thrust limit specified: %s\n" % thrust_limit)
+                    sys.stderr.write("     : Fuel level specified: %s\n" % repr(fuel_level))
+                    sys.stderr.write("     : Max fuel from DB (kg): %s\n" % max_fuel)
+                    sys.stderr.write("     : Max ox from DB (kg): %s\n" % max_ox)
+                    sys.stderr.write("     : Computed liquid fraction from fuel level: %s\n" % liq_frac)
+                    sys.stderr.write("     : Fuel to ox ratio: %s\n" % fo)
+                    sys.stderr.write("     : Expected fuel to ox ratio: %s\n" % f_to_o_eng)
                     raise Exception("Unsupported: fuel and ox ratios must be in engine burn rate proportions for engine %s" % engine_model)
 
             else :
@@ -1321,7 +1362,10 @@ class Stage :
                 self.tanks = data["tanks"]
             except :
                 self.tanks = None
-            self.drags = data["drags"]
+            try :
+                self.drags = data["drags"]
+            except :
+                self.drags = None
             self.dragco = data["dragco"]
             self._assimilate( )        
 
