@@ -66,7 +66,7 @@ def T2DS1ME() :
     else :
         with open( tfile, 'rb' ) as f :
             soln_compare = pickle.load( f )
-            cmp.compare_datasets(flyer.soln, soln_compare)
+            cmp.compare_datasets(flyer.soln, soln_compare, tolfrac=1E-8)
         print("SUCCESS")
 
     if True :
@@ -155,9 +155,9 @@ def T2DS2ME() :
     else :
         with open( tfile, 'rb' ) as f :
             soln_compare = pickle.load( f )
-            cmp.compare_datasets( fly_s1.soln, soln_compare["stage1"] )
-            cmp.compare_datasets( fly_s2.soln, soln_compare["stage2"] )
-            cmp.compare_datasets( DV, soln_compare["DV"] )
+            cmp.compare_datasets( fly_s1.soln, soln_compare["stage1"], tolfrac=1E-3 )
+            cmp.compare_datasets( fly_s2.soln, soln_compare["stage2"], tolfrac=1E-3 )
+            cmp.compare_datasets( DV, soln_compare["DV"], tolfrac=1E-3 )
         print("SUCCESS")
 
     if True :
