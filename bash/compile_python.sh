@@ -18,8 +18,8 @@
 # Useful dependencies
 #
 #          BZip         libz        Open SSL       NCurses                    LZMA compression  
-# RedHat   bzip-devel   libz-devel  openssl-devel  ncurses-devel  gdbm-devel  xz-devel          sqlite-devel  tk-devel  readline-devel
-# Ubuntu   ?            ?
+# RedHat   bzip-devel   libz-devel  openssl-devel  ncurses-devel  gdbm-devel  xz-devel     sqlite-devel   tk-devel  readline-devel
+# Ubuntu   libbz2-dev   zlib1g-dev  libssl-dev     libncurses-dev libgdbm-dev liblzma-dev  libsqlite3-dev tk-dev    libreadline-dev
 #
 
 PYTHON_DEST_DIR=/usr/local/python-3.5.3
